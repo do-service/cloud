@@ -116,6 +116,21 @@ Three ways to keep files on a computer in step with the cloud:
 - **Benchmarked** at 20 million nodes and 2 000 users (`bench/`); a smaller
   listing benchmark runs in CI.
 
+## Screenshots
+
+The UI is in Russian for now. All names and files below are demo data.
+
+![Web UI: the file list of "My files" with folders, image and PDF thumbnails, and the details panel showing a PDF preview](docs/screenshots/web-files.webp)
+
+| | |
+|---|---|
+| ![Grid view of a photo folder with image thumbnails](docs/screenshots/web-photos-grid.webp) | ![Share dialog: a folder shared with two users, one with edit and one with view rights](docs/screenshots/web-share-dialog.webp) |
+| Grid view with thumbnails | Sharing with people and groups; public links on the second tab |
+| ![Admin page with the list of users, their storage usage and roles](docs/screenshots/web-admin-users.webp) | ![The same file list in the dark theme](docs/screenshots/web-dark-theme.webp) |
+| Administration: users, groups, audit log, system | Dark theme follows the system setting |
+| ![Desktop sync client: a connected cloud with checkboxes for the folders kept in sync and their sync status](docs/screenshots/desktop-client.webp) | <img src="docs/screenshots/mobile-files.webp" width="180" alt="Mobile web: the photo folder as a compact list with thumbnails"> <img src="docs/screenshots/mobile-actions.webp" width="180" alt="Mobile web: a selected file with the action bar and the more-actions menu"> |
+| Desktop client: pick what to sync, see its status | The web UI on a phone |
+
 ## Quick start
 
 Requirements: Docker Engine with Docker Compose v2.24 or newer.
