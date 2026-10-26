@@ -105,11 +105,12 @@ services:
     ports:
       - "${BIND:-127.0.0.1}:${CLOUD_PORT:-8080}:8080"
     volumes:
-      # Files, versions, previews and upload parts. In a folder of the host
-      # instead of the volume: replace the line with "- ./data:/data" and
-      # give the folder to the app's user first (it runs as uid 10001):
-      #   mkdir -p data && sudo chown 10001 data
+      # Files, versions, previews and upload parts, in a named volume.
       - cloud_data:/data
+      # In a folder of the host instead: comment the line above, uncomment
+      # this one, and give the folder to the app's user first (it runs as
+      # uid 10001): mkdir -p data && sudo chown 10001 data
+      # - ./data:/data
       - secrets:/secrets:ro
 
   # OnlyOffice Docs Community (AGPL), the online editor. Heavy: a ~3 GB

@@ -156,8 +156,8 @@ image tag). In the file itself:
 - **Online editing** (OnlyOffice, a ~3 GB image) is commented out: uncomment
   every block marked `OnlyOffice` to turn it on.
 - **Uploaded files** are in the `cloud_data` volume; to keep them in a folder
-  of the host, replace it with `./data:/data` and `sudo chown 10001 data`
-  first (the app runs as uid 10001).
+  of the host, switch to the commented `./data:/data` line next to it and
+  `sudo chown 10001 data` first (the app runs as uid 10001).
 
 ### From source
 
