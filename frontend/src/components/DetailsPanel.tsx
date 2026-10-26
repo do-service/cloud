@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { contentUrl, fetchVersions, versionsQueryKey, type FileNode } from "../files";
 import { formatBytes, formatDate, t } from "../i18n";
-import { extension, fetchTextHead, previewable, previewUrl, TEXT_PEEK, textQueryKey, viewerKind } from "../preview";
+import { typeLabel } from "../fileTypes";
+import { fetchTextHead, previewable, previewUrl, TEXT_PEEK, textQueryKey, viewerKind } from "../preview";
 import { NodeIcon } from "./FileList";
 import classes from "./DetailsPanel.module.css";
 
@@ -74,11 +75,12 @@ function Single({ node: n, onOpen, actions }: { node: FileNode; onOpen: (node: F
         {n.name}
       </Text>
       <Stack gap={6}>
-        {file && <Detail label={t("files.panel.type")} value={n.mime?.split(";")[0] || extension(n.name).toUpperCase() || "—"} />}
-        {!file && <Detail label={t("files.panel.type")} value={t("files.panel.folder")} />}
+        {/* The raw MIME stays at hand, for those who look for it. */}
+        <Detail label={t("files.panel.type")} value={typeLabel(n)} title={n.mime?.split(";")[0]} />
         <Detail label={t("files.panel.size")} value={formatBytes(n.size)} />
         <Detail label={t("files.panel.mtime")} value={formatDate(n.mtime)} />
         {author && <Detail label={t("files.panel.author")} value={author.displayName} />}
+        {n.shared && <Detail label={t("files.panel.sharing")} value={t("files.panel.shared")} />}
       </Stack>
       <Group gap="xs">
         <Button size="xs" leftSection={file ? <IconEye size={16} /> : <IconFolderOpen size={16} />} onClick={() => onOpen(n)}>
@@ -90,13 +92,13 @@ function Single({ node: n, onOpen, actions }: { node: FileNode; onOpen: (node: F
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function Detail({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <Group gap="xs" justify="space-between" wrap="nowrap" align="flex-start">
       <Text size="sm" c="dimmed" style={{ flex: "none" }}>
         {label}
       </Text>
-      <Text size="sm" ta="right" className={classes.value}>
+      <Text size="sm" ta="right" className={classes.value} title={title}>
         {value}
       </Text>
     </Group>

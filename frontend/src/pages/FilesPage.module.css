@@ -54,8 +54,19 @@
   flex: none;
 }
 
-/* The folder shown gives way last: the crumbs above it shrink first. */
-.crumbsLine > :last-child:not(:only-child) {
-  flex-shrink: 0;
-  max-width: 60%;
+/* The folder shown gives way last: the crumbs above it shrink first, far
+   faster, down to a letter and the ellipsis. */
+.crumbsLine > a:not(:last-child) {
+  flex-shrink: 1000;
+  min-width: 2.5em;
+}
+
+.crumbsLine > a[data-icon] {
+  flex: none;
+  min-width: 0;
+}
+
+.crumb[data-icon] {
+  display: inline-flex;
+  align-items: center;
 }

@@ -117,9 +117,11 @@ export default function ShareDialog({ node, onClose }: Props) {
         <Tabs.Panel value="link">{node && <LinksPanel node={node} />}</Tabs.Panel>
         <Tabs.Panel value="people">
           <Stack>
-            <Group align="flex-end" wrap="nowrap" gap="xs">
+            {/* On a phone the level goes below the search, which then has
+                the line to itself and its placeholder fits. */}
+            <Group align="flex-end" wrap={phone ? "wrap" : "nowrap"} gap="xs">
               <Select
-                style={{ flex: 1 }}
+                style={{ flex: phone ? "1 1 100%" : 1 }}
                 label={t("share.with")}
                 placeholder={t("share.searchPlaceholder")}
                 searchable
@@ -199,10 +201,14 @@ function ShareRow({
 }) {
   const level = levelOf(share.permissions);
   const reshare = share.permissions.includes("reshare");
+  const phone = useIsPhone();
+  const iconStyle = { flexShrink: 0 };
   return (
-    <Group justify="space-between" wrap="nowrap">
-      <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-        {share.grantee.type === "group" ? <IconUsersGroup size={18} aria-hidden /> : <IconUser size={18} aria-hidden />}
+    // A phone puts the controls under the name, which would get no room
+    // beside them.
+    <Group justify="space-between" wrap={phone ? "wrap" : "nowrap"} gap="xs">
+      <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: phone ? "1 1 100%" : undefined }}>
+        {share.grantee.type === "group" ? <IconUsersGroup size={18} aria-hidden style={iconStyle} /> : <IconUser size={18} aria-hidden style={iconStyle} />}
         <Text size="sm" truncate="end">
           {share.grantee.name}
         </Text>
@@ -221,15 +227,15 @@ function ShareRow({
           onChange={(v) => onChange(toPermissions(v === "edit" ? "edit" : "view", reshare))}
           allowDeselect={false}
         />
-        <Tooltip label={t("share.reshare")}>
-          <Checkbox
-            size="xs"
-            aria-label={t("share.reshareFor", { name: share.grantee.name })}
-            checked={reshare}
-            disabled={busy}
-            onChange={(e) => onChange(toPermissions(level, e.currentTarget.checked))}
-          />
-        </Tooltip>
+        <Checkbox
+          size="xs"
+          label={t("share.reshareShort")}
+          aria-label={t("share.reshareFor", { name: share.grantee.name })}
+          checked={reshare}
+          disabled={busy}
+          onChange={(e) => onChange(toPermissions(level, e.currentTarget.checked))}
+          styles={{ label: { whiteSpace: "nowrap" } }}
+        />
         <Tooltip label={t("share.revoke")}>
           <ActionIcon variant="subtle" color="gray" disabled={busy} onClick={onRevoke} aria-label={t("share.revokeFor", { name: share.grantee.name })}>
             <IconX size={16} />

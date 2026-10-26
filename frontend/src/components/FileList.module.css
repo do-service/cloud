@@ -45,8 +45,12 @@
   border-bottom: 1px solid var(--mantine-color-default-border);
 }
 
-.row:hover {
-  background: var(--mantine-color-default-hover);
+/* Hover only where there is one: on a touch screen the tapped row would
+   keep it after the finger is gone. */
+@media (hover: hover) {
+  .row:hover {
+    background: var(--mantine-color-default-hover);
+  }
 }
 
 .row[data-selected] {
@@ -59,7 +63,8 @@
 
 /* ".." is never selected: the keyboard's place on it shows as a selection
    would, while the list has the focus. */
-.scroll:focus .row[data-up][data-active] {
+.scroll:focus .row[data-up][data-active],
+.scroll:focus .tile[data-up][data-active] {
   background: var(--mantine-primary-color-light);
 }
 
@@ -95,6 +100,42 @@
 .folderIcon {
   color: var(--mantine-color-yellow-6);
   flex: none;
+}
+
+.typeIcon {
+  flex: none;
+}
+
+/* As wide as a thumbnail (.thumb), so names start at one line whether a
+   row shows an icon or a preview. */
+.iconSlot {
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  justify-content: center;
+}
+
+.sharedMark {
+  display: inline-flex;
+  flex: none;
+  color: var(--mantine-color-dimmed);
+}
+
+/* Over the picture's bottom right corner, clear of the checkbox and the
+   menu button at the top. */
+.tileShared {
+  position: absolute;
+  right: 10px;
+  bottom: calc(10px + 2 * var(--mantine-line-height-sm) * var(--mantine-font-size-sm));
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-xl);
+  background: var(--mantine-color-body);
+}
+
+.tileShared .sharedMark {
+  color: var(--mantine-color-text);
 }
 
 /* Narrow screens keep the name readable: size and date go first. */
@@ -163,8 +204,10 @@
   border-radius: var(--mantine-radius-md);
 }
 
-.tile:hover {
-  background: var(--mantine-color-default-hover);
+@media (hover: hover) {
+  .tile:hover {
+    background: var(--mantine-color-default-hover);
+  }
 }
 
 .tile[data-selected] {
@@ -208,7 +251,12 @@
   opacity: 0;
 }
 
-.tile:hover .tileCheck,
+@media (hover: hover) {
+  .tile:hover .tileCheck {
+    opacity: 1;
+  }
+}
+
 .tile[data-selected] .tileCheck {
   opacity: 1;
 }

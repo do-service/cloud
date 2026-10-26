@@ -23,6 +23,20 @@
   border-bottom: 1px solid var(--mantine-color-dark-5);
 }
 
+/* The bar is dark in either scheme, so the theme's subtle gray would all
+   but vanish on it: a light icon on a raised, outlined button instead. */
+.close {
+  color: var(--mantine-color-white);
+  background: var(--mantine-color-dark-5);
+  border: 1px solid var(--mantine-color-dark-3);
+}
+
+@media (hover: hover) {
+  .close:hover {
+    background: var(--mantine-color-dark-4);
+  }
+}
+
 .stage {
   position: relative;
   display: flex;

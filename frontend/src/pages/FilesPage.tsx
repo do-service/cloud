@@ -16,6 +16,7 @@ import {
   IconFolderOpen,
   IconFolderPlus,
   IconHistory,
+  IconHome,
   IconLayoutGrid,
   IconLayoutSidebarRight,
   IconList,
@@ -57,6 +58,7 @@ import {
   runBatch,
   type BatchResult,
   type FileNode,
+  type PathEntry,
   SORT_KEYS,
   type Sort,
   type SortKey,
@@ -666,6 +668,7 @@ function FolderView({ id, sort, onSort, onSetSort }: { id: string; sort: Sort; o
   // between (a menu of them) and this one.
   const hiddenPath = phone && path.length > 2 ? path.slice(1, -1) : [];
   const shownPath = hiddenPath.length > 0 ? [path[0], path[path.length - 1]] : path;
+  const rootIcon = (p: PathEntry) => phone && p.name === "";
   const crumbs = (
     <Breadcrumbs separatorMargin={4} style={{ minWidth: 0 }} className={phone ? classes.crumbsLine : undefined}>
       {sharedTree && (
@@ -702,8 +705,11 @@ function FolderView({ id, sort, onSort, onSetSort }: { id: string; sort: Sort; o
             truncate="end"
             className={classes.crumb}
             {...crumbDrop(p.id)}
+            // A phone's line is too short for the root's name: its icon
+            // leaves the room to the folder shown.
+            {...(rootIcon(p) ? { "aria-label": t("files.root"), title: t("files.root"), "data-icon": true } : {})}
           >
-            {p.name || t("files.root")}
+            {rootIcon(p) ? <IconHome size={18} aria-hidden /> : p.name || t("files.root")}
           </Anchor>
         ),
       ])}

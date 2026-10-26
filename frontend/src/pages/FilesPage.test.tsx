@@ -704,6 +704,61 @@ describe("FilesPage grid view", () => {
     fireEvent.click(rows()[2], { ctrlKey: true });
     expect(selected()).toEqual(["node-n2", "node-n9"]);
   });
+
+  it("makes '..' the first tile, reached by the arrows like the others", async () => {
+    // Four to a line: "..", n0, n1, n2 / n3 … n6 / n7 … n9.
+    localStorage.setItem("cloud.files.view", "grid");
+    const many = Array.from({ length: 10 }, (_, i) => node(`n${i}`, `file${i}.bin`));
+    backend({ "GET /api/v1/nodes/d/children": () => Response.json({ items: many, nextCursor: null }) });
+    renderApp("/files/d");
+    await waitFor(() => expect(rows()).toHaveLength(10));
+    const list = screen.getByRole("listbox");
+    const selected = () => rows().filter((r) => r.getAttribute("aria-selected") === "true").map((r) => r.id);
+    // A tile in the first line, not a row above the grid.
+    expect(upRow().parentElement).toBe(document.getElementById("node-n0")?.parentElement);
+
+    fireEvent.keyDown(list, { key: "Home" });
+    expect(list).toHaveAttribute("aria-activedescendant", "node-up");
+    fireEvent.keyDown(list, { key: "ArrowRight" });
+    expect(selected()).toEqual(["node-n0"]);
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(selected()).toEqual(["node-n4"]);
+    fireEvent.keyDown(list, { key: "ArrowUp" });
+    expect(selected()).toEqual(["node-n0"]);
+    fireEvent.keyDown(list, { key: "ArrowLeft" });
+    expect(list).toHaveAttribute("aria-activedescendant", "node-up");
+    expect(selected()).toEqual([]);
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(selected()).toEqual(["node-n3"]);
+  });
+});
+
+describe("FilesPage shared items", () => {
+  it("marks what is shared in the list and the details panel", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(min-width: 900px)",
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    localStorage.setItem("cloud.files.panel", "1");
+    const items = [{ ...node("d", "Docs", "dir"), shared: true }, node("a", "a.txt")];
+    backend({ "GET /api/v1/nodes/root/children": () => Response.json({ items, nextCursor: null }) });
+    renderApp("/files");
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(within(rows()[0]).getByRole("img", { name: "Открыт доступ другим" })).toBeInTheDocument();
+    expect(within(rows()[1]).queryByRole("img", { name: "Открыт доступ другим" })).not.toBeInTheDocument();
+
+    const panel = () => screen.getByRole("complementary", { name: "Сведения" });
+    fireEvent.click(rows()[0]);
+    expect(within(panel()).getByText("Открыт другим")).toBeInTheDocument();
+    fireEvent.click(rows()[1]);
+    expect(within(panel()).queryByText("Открыт другим")).not.toBeInTheDocument();
+  });
 });
 
 describe("FilesPage details panel", () => {
@@ -738,7 +793,7 @@ describe("FilesPage details panel", () => {
     fireEvent.click(rows()[1]);
     expect(await within(panel()).findByText("hello from a")).toBeInTheDocument();
     expect(within(panel()).getByText("a.txt")).toBeInTheDocument();
-    expect(within(panel()).getByText("TXT")).toBeInTheDocument();
+    expect(within(panel()).getByText("Текстовый файл TXT")).toBeInTheDocument();
     expect(await within(panel()).findByText("Борис")).toBeInTheDocument();
     expect(within(panel()).getByRole("button", { name: "Скачать" })).toBeInTheDocument();
     expect(within(panel()).getByRole("button", { name: "Версии" })).toBeInTheDocument();

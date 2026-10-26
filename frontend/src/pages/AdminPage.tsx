@@ -43,21 +43,21 @@ export default function AdminPage() {
         value={tab}
         onChange={(v) => isTab(v) && setParams({ tab: v }, { replace: true })}
         keepMounted={false}
-        // On a phone the tabs keep one line and scroll sideways in it,
-        // rather than wrapping or widening the page.
-        styles={phone ? { list: { flexWrap: "nowrap", overflowX: "auto", scrollbarWidth: "none" }, tab: { flexShrink: 0 } } : undefined}
+        // On a phone the four tabs share one line, without icons and with
+        // less padding, so all of them fit rather than scroll out of sight.
+        styles={phone ? { tab: { paddingInline: "var(--mantine-spacing-xs)" } } : undefined}
       >
-        <Tabs.List mb="md">
-          <Tabs.Tab value="users" leftSection={<IconUsers size={16} />}>
+        <Tabs.List mb="md" grow={phone}>
+          <Tabs.Tab value="users" leftSection={!phone && <IconUsers size={16} />}>
             {t("admin.tabs.users")}
           </Tabs.Tab>
-          <Tabs.Tab value="groups" leftSection={<IconUsersGroup size={16} />}>
+          <Tabs.Tab value="groups" leftSection={!phone && <IconUsersGroup size={16} />}>
             {t("admin.tabs.groups")}
           </Tabs.Tab>
-          <Tabs.Tab value="audit" leftSection={<IconFileText size={16} />}>
+          <Tabs.Tab value="audit" leftSection={!phone && <IconFileText size={16} />}>
             {t("admin.tabs.audit")}
           </Tabs.Tab>
-          <Tabs.Tab value="system" leftSection={<IconSettings size={16} />}>
+          <Tabs.Tab value="system" leftSection={!phone && <IconSettings size={16} />}>
             {t("admin.tabs.system")}
           </Tabs.Tab>
         </Tabs.List>

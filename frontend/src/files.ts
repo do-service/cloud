@@ -1,5 +1,5 @@
 import { apiRequest } from "./api";
-import { expectShape, isArrayOf, isNumber, isRecord, isString } from "./guards";
+import { expectShape, isArrayOf, isBoolean, isNumber, isRecord, isString } from "./guards";
 
 // Mirrors backend/internal/nodes' JSON.
 export type NodeKind = "dir" | "file";
@@ -20,6 +20,9 @@ export type FileNode = {
   mtime: string;
   // The signed-in user's rights on it.
   permissions: Permission[];
+  // Shared with someone or by a link, on the node itself; told only to
+  // those who may manage its shares.
+  shared?: boolean;
 };
 
 export type Permission = "read" | "write" | "reshare";
@@ -70,7 +73,8 @@ export function isFileNode(v: unknown): v is FileNode {
     isString(v.etag) &&
     (v.sha256 === undefined || isString(v.sha256)) &&
     isString(v.mtime) &&
-    isArrayOf(v.permissions, isPermission)
+    isArrayOf(v.permissions, isPermission) &&
+    (v.shared === undefined || isBoolean(v.shared))
   );
 }
 

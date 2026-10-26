@@ -1,16 +1,21 @@
-import { ActionIcon, Box, Button, Checkbox, Group, Loader, Text, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Box, Button, Checkbox, Group, Loader, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import {
   IconChevronDown,
   IconChevronUp,
   IconDots,
   IconFile,
+  IconFileSpreadsheet,
   IconFileText,
   IconFileTypePdf,
+  IconFileWord,
   IconFileZip,
   IconFolderFilled,
   IconMovie,
   IconMusic,
   IconPhoto,
+  IconPresentation,
+  IconUsers,
+  type Icon,
 } from "@tabler/icons-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -26,6 +31,7 @@ import {
   type TouchEvent,
 } from "react";
 import type { FileNode, Sort, SortKey } from "../files";
+import { fileType, type FileType } from "../fileTypes";
 import { isArrayOf, isString } from "../guards";
 import { formatBytes, formatDate, t, type MessageKey } from "../i18n";
 import { useCoarsePointer, useIsPhone } from "../media";
@@ -175,17 +181,47 @@ const COLUMNS: { key: SortKey; label: MessageKey }[] = [
   { key: "mtime", label: "files.columns.mtime" },
 ];
 
+// Folders and the office formats get their color, as in desktop file
+// managers; the rest stay the text color.
+const ICONS: Record<FileType, { icon: Icon; color?: string }> = {
+  folder: { icon: IconFolderFilled, color: "yellow" },
+  image: { icon: IconPhoto },
+  video: { icon: IconMovie },
+  audio: { icon: IconMusic },
+  pdf: { icon: IconFileTypePdf, color: "red" },
+  document: { icon: IconFileWord, color: "blue" },
+  spreadsheet: { icon: IconFileSpreadsheet, color: "green" },
+  presentation: { icon: IconPresentation, color: "orange" },
+  text: { icon: IconFileText },
+  archive: { icon: IconFileZip },
+  other: { icon: IconFile },
+};
+
 export function NodeIcon({ node, size = 20 }: { node: FileNode; size?: number }) {
-  const props = { size, stroke: 1.5, "aria-hidden": true };
-  if (node.kind === "dir") return <IconFolderFilled {...props} className={classes.folderIcon} />;
-  const mime = node.mime ?? "";
-  if (mime.startsWith("image/")) return <IconPhoto {...props} />;
-  if (mime.startsWith("video/")) return <IconMovie {...props} />;
-  if (mime.startsWith("audio/")) return <IconMusic {...props} />;
-  if (mime === "application/pdf") return <IconFileTypePdf {...props} />;
-  if (mime.startsWith("text/")) return <IconFileText {...props} />;
-  if (/zip|x-7z|x-rar|x-tar|gzip/.test(mime)) return <IconFileZip {...props} />;
-  return <IconFile {...props} />;
+  const type = fileType(node);
+  const { icon: TypeIcon, color } = ICONS[type];
+  return (
+    <TypeIcon
+      size={size}
+      stroke={1.5}
+      aria-hidden
+      data-type={type}
+      className={classes.typeIcon}
+      color={color && `var(--mantine-color-${color}-6)`}
+    />
+  );
+}
+
+// SharedMark tells a shared node in a row or a tile.
+export function SharedMark({ size = 16 }: { size?: number }) {
+  const label = t("files.shared");
+  return (
+    <Tooltip label={label} withinPortal>
+      <span role="img" aria-label={label} className={classes.sharedMark}>
+        <IconUsers size={size} stroke={1.5} />
+      </span>
+    </Tooltip>
+  );
 }
 
 // Thumb shows a file's preview in place of its icon; until it loads, and
@@ -271,12 +307,13 @@ export default function FileList(props: Props) {
   const cols = grid ? Math.max(1, Math.floor(width / tileSize)) : 1;
   const rowHeight = grid ? tileSize + TILE_EXTRA : phone ? PHONE_ROW_HEIGHT : ROW_HEIGHT;
   // A virtual row is a row of the list or a line of tiles; item i is in
-  // row rowOf(i).
-  // The ".." row, if any, is virtual row 0: a list row even in the grid.
-  const upRows = onUp ? 1 : 0;
+  // row rowOf(i). ".." (index -1), if any, is virtual row 0 in the list,
+  // and the first tile in the grid, which shifts the items by one slot.
+  const upRows = onUp && !grid ? 1 : 0;
+  const upSlots = onUp && grid ? 1 : 0;
   const upHeight = phone ? PHONE_ROW_HEIGHT : ROW_HEIGHT;
-  const rowOf = (index: number) => upRows + Math.floor(index / cols);
-  const itemRows = Math.ceil(items.length / cols);
+  const rowOf = (index: number) => upRows + Math.floor((index + upSlots) / cols);
+  const itemRows = Math.ceil((items.length + upSlots) / cols);
 
   const rowCount = upRows + itemRows + (hasMore ? 1 : 0);
   const virtualizer = useVirtualizer({
@@ -477,7 +514,7 @@ export default function FileList(props: Props) {
   const moveTo = (index: number, extend: boolean) => {
     const i = Math.max(firstIndex, Math.min(items.length - 1, index));
     setActive(i);
-    virtualizer.scrollToIndex(i < 0 ? 0 : rowOf(i));
+    virtualizer.scrollToIndex(rowOf(i));
     // On ".." nothing is selected: it is a way out, not an item.
     if (i < 0) {
       if (!extend) setSelected(new Set());
@@ -487,12 +524,13 @@ export default function FileList(props: Props) {
   const keyDown = (e: KeyboardEvent) => {
     if (items.length === 0 && !onUp) return;
     const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? rowHeight) / rowHeight) - 1) * cols;
-    // From "..", a line of its own, down goes to the first item.
-    const down = active < 0 ? 0 : active + cols;
+    // From a ".." row, a line of its own, down goes to the first item; a
+    // ".." tile is in the first line like any other.
+    const ownLine = active < 0 && upSlots === 0;
     const moves: Record<string, number> = {
-      ArrowDown: down,
-      ArrowUp: active < cols ? firstIndex : active - cols,
-      PageDown: active < 0 ? page - 1 : active + page,
+      ArrowDown: ownLine ? 0 : active + cols,
+      ArrowUp: active + upSlots < cols ? firstIndex : active - cols,
+      PageDown: ownLine ? page - 1 : active + page,
       PageUp: active - page,
       Home: firstIndex,
       End: items.length - 1,
@@ -610,6 +648,20 @@ export default function FileList(props: Props) {
       </ActionIcon>
     );
   const iconSize = Math.round(tileSize * 0.4);
+  // The ".." row or tile: never selected, opened as a folder is.
+  const upProps = onUp && {
+    id: "node-up",
+    "data-up": true,
+    role: "option",
+    "data-active": active < 0 || undefined,
+    "aria-selected": false,
+    "aria-label": t("files.up"),
+    title: t("files.up"),
+    onPointerDown: (e: PointerEvent) => (lastPointer.current = e.pointerType),
+    // By double click, or by a tap.
+    onClick: () => (lastPointer.current === "touch" ? onUp() : setActive(-1)),
+    onDoubleClick: () => lastPointer.current !== "touch" && onUp(),
+  };
 
   return (
     <Box className={classes.root}>
@@ -654,27 +706,19 @@ export default function FileList(props: Props) {
       >
         <div data-list-gap style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((virtualRow) => {
-            if (onUp && virtualRow.index === 0) {
+            if (upRows > 0 && virtualRow.index === 0) {
               return (
                 <div
                   key="up"
-                  id="node-up"
-                  data-up
-                  role="option"
-                  data-active={active < 0 || undefined}
-                  aria-selected={false}
-                  aria-label={t("files.up")}
-                  title={t("files.up")}
+                  {...upProps}
                   className={classes.row}
                   style={{ transform: `translateY(${virtualRow.start}px)`, height: upHeight }}
-                  onPointerDown={(e) => (lastPointer.current = e.pointerType)}
-                  // As a folder opens: by double click, or by a tap.
-                  onClick={() => (lastPointer.current === "touch" ? onUp() : setActive(-1))}
-                  onDoubleClick={() => lastPointer.current !== "touch" && onUp()}
                 >
                   <Box className={classes.check} />
                   <Group className={classes.name} gap="sm" wrap="nowrap">
-                    <IconFolderFilled size={20} stroke={1.5} aria-hidden className={classes.folderIcon} />
+                    <span className={classes.iconSlot}>
+                      <IconFolderFilled size={20} stroke={1.5} aria-hidden className={classes.folderIcon} />
+                    </span>
                     <Text size="sm">..</Text>
                   </Group>
                 </div>
@@ -702,7 +746,7 @@ export default function FileList(props: Props) {
               );
             }
             if (grid) {
-              const first = row.index * cols;
+              const first = row.index * cols - upSlots;
               return (
                 <div
                   key={row.index}
@@ -710,12 +754,23 @@ export default function FileList(props: Props) {
                   className={classes.gridRow}
                   style={{ transform: `translateY(${row.start}px)`, height: rowHeight, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
                 >
-                  {items.slice(first, first + cols).map((node, i) => {
+                  {first < 0 && (
+                    <div key="up" {...upProps} className={classes.tile}>
+                      <div className={classes.tilePicture}>
+                        <IconFolderFilled size={iconSize} stroke={1.5} aria-hidden className={classes.folderIcon} />
+                      </div>
+                      <Text size="sm" ta="center" className={classes.tileName}>
+                        ..
+                      </Text>
+                    </div>
+                  )}
+                  {items.slice(Math.max(first, 0), first + cols).map((node, i) => {
+                    const index = Math.max(first, 0) + i;
                     const thumb = thumbnail?.(node);
                     return (
-                      <div key={node.id} {...optionProps(node, first + i)} className={classes.tile}>
+                      <div key={node.id} {...optionProps(node, index)} className={classes.tile}>
                         <Box className={classes.tileCheck} onClick={(e) => e.stopPropagation()}>
-                          {checkbox(node, first + i)}
+                          {checkbox(node, index)}
                         </Box>
                         <div className={classes.tilePicture}>
                           {thumb ? <Thumb key={node.etag} node={node} src={thumb} iconSize={iconSize} /> : <NodeIcon node={node} size={iconSize} />}
@@ -723,8 +778,13 @@ export default function FileList(props: Props) {
                         <Text size="sm" ta="center" lineClamp={2} title={node.name} className={classes.tileName}>
                           {node.name}
                         </Text>
+                        {node.shared && (
+                          <span className={classes.tileShared}>
+                            <SharedMark />
+                          </span>
+                        )}
                         {badge?.(node)}
-                        {menuButton(node, first + i)}
+                        {menuButton(node, index)}
                       </div>
                     );
                   })}
@@ -744,7 +804,8 @@ export default function FileList(props: Props) {
                   {checkbox(node, row.index)}
                 </Box>
                 <Group className={classes.name} gap="sm" wrap="nowrap">
-                  {thumb ? <Thumb key={node.etag} node={node} src={thumb} /> : <NodeIcon node={node} />}
+                  {/* One width for thumbnails and icons, so names line up. */}
+                  <span className={classes.iconSlot}>{thumb ? <Thumb key={node.etag} node={node} src={thumb} /> : <NodeIcon node={node} />}</span>
                   {phone ? (
                     <Box miw={0}>
                       <Text size="sm" truncate="end" title={node.name}>
@@ -759,6 +820,7 @@ export default function FileList(props: Props) {
                       {node.name}
                     </Text>
                   )}
+                  {node.shared && <SharedMark />}
                   {badge?.(node)}
                 </Group>
                 {!phone && (

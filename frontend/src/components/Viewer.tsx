@@ -86,7 +86,7 @@ export default function Viewer({ items, index, onIndex, onClose, imageUrl, pdfUr
               </Button>
             ))}
           <Tooltip label={t("viewer.close")}>
-            <ActionIcon variant="subtle" color="gray" size="lg" onClick={onClose} aria-label={t("viewer.close")}>
+            <ActionIcon variant="filled" color="dark" size="lg" className={classes.close} onClick={onClose} aria-label={t("viewer.close")}>
               <IconX size={20} />
             </ActionIcon>
           </Tooltip>

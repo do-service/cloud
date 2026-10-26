@@ -1,4 +1,5 @@
-import { Alert, Badge, Box, Button, Center, Group, Menu, Modal, NavLink, ActionIcon, ScrollArea, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Box, Button, Center, Group, Menu, Modal, NavLink, ActionIcon, ScrollArea, Stack, Text, Title, Tooltip } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { IconDots, IconFolderOpen, IconFolderShare, IconPlayerPause, IconPlayerPlay, IconPlus, IconUnlink } from "@tabler/icons-react";
 import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
@@ -116,6 +117,10 @@ export default function App() {
 
 const HINTS = ["needs_signin", "no_folder", "busy"] as const;
 
+// Below this window width the header's buttons lose their labels (kept in
+// tooltips), so the connection's name stays readable beside them.
+const COMPACT_MEDIA = "(max-width: 74.99em)";
+
 function ConnectionView({ conn }: { conn: Connection }) {
   const queryClient = useQueryClient();
   // Its own cache: the web code's query keys don't name the server, and
@@ -152,6 +157,10 @@ function ConnectionView({ conn }: { conn: Connection }) {
     },
   });
   const adoptCount = adoptable.data?.length ?? 0;
+  const compact = useMediaQuery(COMPACT_MEDIA, false, { getInitialValueInEffect: false });
+  const openLocal = () => openFolder(conn.id).catch((err: unknown) => setError(appErrorText(err)));
+  const pauseLabel = paused ? t("desktop.resume") : t("desktop.pause");
+  const pauseIcon = paused ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />;
 
   return (
     <Stack h="100%" gap="sm">
@@ -176,24 +185,30 @@ function ConnectionView({ conn }: { conn: Connection }) {
             {`\u200E${t("desktop.folder", { path: conn.folder })}`}
           </Text>
         </Box>
-        <Group gap="xs" wrap="nowrap">
-          <Button
-            variant="default"
-            size="sm"
-            leftSection={<IconFolderOpen size={16} />}
-            onClick={() => openFolder(conn.id).catch((err: unknown) => setError(appErrorText(err)))}
-          >
-            {t("desktop.openFolder")}
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            leftSection={paused ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />}
-            loading={pause.isPending}
-            onClick={() => pause.mutate()}
-          >
-            {paused ? t("desktop.resume") : t("desktop.pause")}
-          </Button>
+        <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+          {compact ? (
+            <>
+              <Tooltip label={t("desktop.openFolder")}>
+                <ActionIcon variant="default" size="lg" aria-label={t("desktop.openFolder")} onClick={() => void openLocal()}>
+                  <IconFolderOpen size={16} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={pauseLabel}>
+                <ActionIcon variant="default" size="lg" aria-label={pauseLabel} loading={pause.isPending} onClick={() => pause.mutate()}>
+                  {pauseIcon}
+                </ActionIcon>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <Button variant="default" size="sm" leftSection={<IconFolderOpen size={16} />} onClick={() => void openLocal()}>
+                {t("desktop.openFolder")}
+              </Button>
+              <Button variant="default" size="sm" leftSection={pauseIcon} loading={pause.isPending} onClick={() => pause.mutate()}>
+                {pauseLabel}
+              </Button>
+            </>
+          )}
           <Menu position="bottom-end">
             <Menu.Target>
               <ActionIcon variant="default" size="lg" aria-label={t("desktop.actions")}>
