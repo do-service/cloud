@@ -252,9 +252,9 @@ func TestEngineOfflineBackoff(t *testing.T) {
 		}
 		return false
 	}
-	if !hasOffline() {
-		t.Fatal("no offline problem")
-	}
+	// The problem is written after the status flips (setOffline), in a
+	// transaction of its own.
+	eventually(t, "offline problem", 5*time.Second, hasOffline)
 	start := g.changes.Load() + g.pings.Load()
 	time.Sleep(3 * time.Second)
 	if n := g.changes.Load() + g.pings.Load() - start; n > 6 {
