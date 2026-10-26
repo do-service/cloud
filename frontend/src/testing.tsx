@@ -1,4 +1,4 @@
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider, Popover, mergeThemeOverrides } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -62,10 +62,17 @@ function LocationProbe() {
 // The app's current URL (path and query), for tests of what it keeps there.
 export const currentUrl = () => location;
 
+// A dropdown whose target looks detached is hidden (display: none); in
+// jsdom every box measures zero, and floating-ui now and then calls the
+// target hidden, so a menu opened in a test sometimes never shows.
+const testTheme = mergeThemeOverrides(theme, {
+  components: { Popover: Popover.extend({ defaultProps: { hideDetached: false } }) },
+});
+
 export function renderApp(path: string) {
   return render(
     <QueryClientProvider client={createQueryClient(false)}>
-      <MantineProvider theme={theme}>
+      <MantineProvider theme={testTheme}>
         <Notifications />
         <MemoryRouter initialEntries={[path]}>
           <App />

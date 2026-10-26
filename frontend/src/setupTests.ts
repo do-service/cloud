@@ -1,10 +1,6 @@
 import { afterEach } from "vitest";
-import { cleanup, configure } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-
-// findBy*/waitFor give up after 1 s by default: on a shared CI runner a
-// Mantine menu's open transition alone has taken longer.
-configure({ asyncUtilTimeout: 5000 });
 
 // `globals: false` in vite.config.ts means testing-library's own automatic
 // afterEach-cleanup registration (which relies on a global `afterEach`)
