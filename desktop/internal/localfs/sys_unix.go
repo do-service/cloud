@@ -10,14 +10,15 @@ import (
 	"syscall"
 )
 
-// fileID reads the id from the stat the caller already has: free on Unix.
-func fileID(_ string, fi fs.FileInfo) (FileID, error) {
+// fileID reads the id from the stat the caller already has, and on Linux
+// the birth time (birthTime) from one more.
+func fileID(path string, fi fs.FileInfo) (FileID, error) {
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {
 		return FileID{}, fmt.Errorf("localfs: no stat_t for %s", fi.Name())
 	}
 	// Dev is int32 on darwin and uint64 on linux.
-	return FileID{Volume: uint64(st.Dev), Index: uint64(st.Ino)}, nil
+	return FileID{Volume: uint64(st.Dev), Index: uint64(st.Ino), Birth: birthTime(path, uint64(st.Ino))}, nil
 }
 
 // dirGone: a folder queued for a flush isn't there any more — removed,

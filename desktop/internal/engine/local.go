@@ -60,6 +60,19 @@ func (e *Engine) refreshLocal(ctx context.Context) error {
 		if err := e.applyScan(ctx, "", res); err != nil {
 			return err
 		}
+		// Ids stored by a client that didn't read birth times, or before
+		// the entry came back to its path, get them now.
+		var upgraded int64
+		if err := e.db.Update(ctx, func(tx *state.Tx) error {
+			var err error
+			upgraded, err = tx.UpgradeFileIDs("")
+			return err
+		}); err != nil {
+			return err
+		}
+		if upgraded > 0 {
+			e.log.Info("sync: file ids got birth times", "rows", upgraded)
+		}
 		e.mu.Lock()
 		e.scanned, e.lastFull = true, time.Now()
 		e.mu.Unlock()

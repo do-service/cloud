@@ -40,7 +40,7 @@ type Stamp struct {
 // entries, which sync tracks one by one, so for folders only the id
 // counts.
 func (s Stamp) Same(o Stamp) bool {
-	if s.Kind != o.Kind || s.FileID != o.FileID {
+	if s.Kind != o.Kind || !s.FileID.Matches(o.FileID) {
 		return false
 	}
 	return s.Kind == KindDir || (s.Size == o.Size && s.MtimeNS == o.MtimeNS)

@@ -224,6 +224,25 @@ func (t *Tx) BaseUnder(relPath string) ([]Base, error) {
 	return collect(rows, err, scanBaseRows)
 }
 
+// UpgradeFileIDs gives base rows at and below relPath ("": all) stored as
+// "volume:index" the birth time a scan now reads ("volume:index:birth",
+// localfs.FileID), from the local row at their path with the same volume
+// and index; how many it changed. A row whose entry is elsewhere keeps
+// its id, which still matches the entry's, until a later call finds the
+// entry at its path.
+func (t *Tx) UpgradeFileIDs(relPath string) (int64, error) {
+	res, err := t.exec(`
+		UPDATE base SET file_id = (SELECT l.file_id FROM local l WHERE l.rel_path = base.rel_path)
+		WHERE file_id != '' AND file_id NOT LIKE '%:%:%'
+			AND (?1 = '' OR rel_path = ?1 OR substr(rel_path, 1, length(?1) + 1) = ?1 || '/')
+			AND EXISTS (SELECT 1 FROM local l WHERE l.rel_path = base.rel_path AND l.kind = base.kind
+				AND substr(l.file_id, 1, length(base.file_id) + 1) = base.file_id || ':')`, relPath)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // DeleteBaseUnder forgets relPath and everything under it: a folder
 // trashed on the server takes its subtree, which the server doesn't
 // journal node by node.

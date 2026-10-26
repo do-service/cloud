@@ -120,7 +120,13 @@ func moveBase(tx *state.Tx, nodeID, from, to string) error {
 			return err
 		}
 	}
-	return tx.MoveBase(from, to)
+	if err := tx.MoveBase(from, to); err != nil {
+		return err
+	}
+	// Moved, an entry stored without a birth time can get it now: base is
+	// where the disk has it.
+	_, err = tx.UpgradeFileIDs(to)
+	return err
 }
 
 func (e *Engine) upload(ctx context.Context, id int64, o Op) (func(*state.Tx) error, error) {
@@ -428,7 +434,7 @@ func (e *Engine) stillDeletable(ctx context.Context, o Op) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if st.Kind == localfs.KindDir && (o.Expect == nil || o.Expect.FileID.IsZero() || st.FileID == o.Expect.FileID) {
+		if st.Kind == localfs.KindDir && (o.Expect == nil || o.Expect.FileID.IsZero() || st.FileID.Matches(o.Expect.FileID)) {
 			return false, nil
 		}
 	}
@@ -571,7 +577,7 @@ func (e *Engine) isEntry(rel string, expect *localfs.Stamp) bool {
 		return true
 	}
 	st, err := localfs.Stat(e.cfg.Root, rel)
-	return err == nil && st.FileID == expect.FileID
+	return err == nil && st.FileID.Matches(expect.FileID)
 }
 
 func (e *Engine) removeLocal(o Op) (func(*state.Tx) error, error) {

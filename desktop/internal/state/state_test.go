@@ -357,6 +357,66 @@ func TestBaseMoveUp(t *testing.T) {
 	}
 }
 
+// Base rows stored as "volume:index" (before birth times were read) take
+// the full id of the entry at their path with the same volume and index;
+// nothing else changes.
+func TestUpgradeFileIDs(t *testing.T) {
+	db := openTemp(t)
+	base := []Base{
+		{NodeID: "up", RelPath: "a.txt", Kind: KindFile, ETag: "e", FileID: "4d:10"},
+		{NodeID: "dir", RelPath: "d", Kind: KindDir, ETag: "e", FileID: "4d:11"},
+		{NodeID: "other", RelPath: "b.txt", Kind: KindFile, ETag: "e", FileID: "4d:12"},  // another inode there now
+		{NodeID: "moved", RelPath: "c.txt", Kind: KindFile, ETag: "e", FileID: "4d:13"},  // its entry is elsewhere
+		{NodeID: "kind", RelPath: "k", Kind: KindFile, ETag: "e", FileID: "4d:14"},       // a folder there now
+		{NodeID: "new", RelPath: "n.txt", Kind: KindFile, ETag: "e", FileID: "4d:15:99"}, // has one already
+		{NodeID: "none", RelPath: "z.txt", Kind: KindFile, ETag: "e", FileID: ""},
+		{NodeID: "prefix", RelPath: "p.txt", Kind: KindFile, ETag: "e", FileID: "4d:1"}, // "4d:16:…" isn't it
+	}
+	local := []Local{
+		{RelPath: "a.txt", Kind: KindFile, FileID: "4d:10:abc"},
+		{RelPath: "d", Kind: KindDir, FileID: "4d:11:abd"},
+		{RelPath: "b.txt", Kind: KindFile, FileID: "4d:99:abe"},
+		{RelPath: "elsewhere.txt", Kind: KindFile, FileID: "4d:13:abf"},
+		{RelPath: "k", Kind: KindDir, FileID: "4d:14:ac0"},
+		{RelPath: "n.txt", Kind: KindFile, FileID: "4d:15:99"},
+		{RelPath: "z.txt", Kind: KindFile, FileID: "4d:17:ac1"},
+		{RelPath: "p.txt", Kind: KindFile, FileID: "4d:16:ac2"},
+	}
+	var n int64
+	update(t, db, func(tx *Tx) error {
+		for _, b := range base {
+			if err := tx.PutBase(b); err != nil {
+				return err
+			}
+		}
+		for _, l := range local {
+			if err := tx.PutLocal(l); err != nil {
+				return err
+			}
+		}
+		// Only the subtree asked for.
+		if n, err := tx.UpgradeFileIDs("d"); err != nil || n != 1 {
+			t.Errorf("under d: %d, %v", n, err)
+		}
+		var err error
+		n, err = tx.UpgradeFileIDs("")
+		return err
+	})
+	if n != 1 {
+		t.Errorf("%d more rows upgraded, want 1", n)
+	}
+	view(t, db, func(tx *Tx) error {
+		want := map[string]string{"up": "4d:10:abc", "dir": "4d:11:abd", "other": "4d:12", "moved": "4d:13", "kind": "4d:14",
+			"new": "4d:15:99", "none": "", "prefix": "4d:1"}
+		for id, fid := range want {
+			if b, err := tx.Base(id); err != nil || b.FileID != fid {
+				t.Errorf("Base(%s).FileID = %q, %v; want %q", id, b.FileID, err, fid)
+			}
+		}
+		return nil
+	})
+}
+
 func TestIntendRunning(t *testing.T) {
 	ctx := context.Background()
 	db := openTemp(t)

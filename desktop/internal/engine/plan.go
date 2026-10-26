@@ -193,14 +193,17 @@ func keyOf(r *state.Remote) string {
 // claims is new.
 func (p *planner) match() {
 	for _, b := range p.baseSorted {
-		if l := p.local[nfc(b.RelPath)]; l != nil && l.Kind == b.Kind && (b.FileID == "" || l.FileID == b.FileID) {
+		if l := p.local[nfc(b.RelPath)]; l != nil && l.Kind == b.Kind && (b.FileID == "" || localfs.SameFileID(l.FileID, b.FileID)) {
 			p.claimFor(b, l)
 		}
 	}
+	// By volume and index: an id stored before birth times were read
+	// (localfs.FileID) still finds its file.
 	byID := map[string][]*state.Local{}
 	for _, l := range p.localSorted {
 		if !p.claimed[l] && l.FileID != "" {
-			byID[l.FileID] = append(byID[l.FileID], l)
+			k := localfs.FileIDKey(l.FileID)
+			byID[k] = append(byID[k], l)
 		}
 	}
 	for _, b := range p.baseSorted {
@@ -209,7 +212,8 @@ func (p *planner) match() {
 		}
 		// Two entries with one id are hard links: no telling which is the
 		// moved one, so neither is.
-		if c := byID[b.FileID]; len(c) == 1 && !p.claimed[c[0]] && c[0].Kind == b.Kind && !p.reused(b, c[0]) {
+		c := byID[localfs.FileIDKey(b.FileID)]
+		if len(c) == 1 && !p.claimed[c[0]] && c[0].Kind == b.Kind && localfs.SameFileID(c[0].FileID, b.FileID) && !p.reused(b, c[0]) {
 			p.claimFor(b, c[0])
 		}
 	}
