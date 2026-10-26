@@ -364,6 +364,25 @@ func TestSharedReadOnly(t *testing.T) {
 	w.expect()
 }
 
+// A folder with a folder in it, deleted in a read-only share: nothing
+// goes to the trash, so nothing below waits for it; the folder comes
+// back (found by TestSyncProperty).
+func TestSharedReadOnlyNestedDelete(t *testing.T) {
+	w := newShareWorld(t)
+	w.s.putIn(w.ivan, "Проект/sub/deep/c.txt", "c")
+	w.s.share(w.project(), "read")
+	w.h.selectAll()
+	w.selectPath("/" + proj)
+	w.h.sync()
+	w.expect("Проект")
+	if err := os.RemoveAll(filepath.Join(w.h.root, proj, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	w.h.sync()
+	w.expect("Проект")
+	w.converged()
+}
+
 func TestSharedWritableMoveOut(t *testing.T) {
 	w := newShareWorld(t)
 	w.s.share(w.project(), "read", "write")

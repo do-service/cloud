@@ -345,7 +345,9 @@ func (p *planner) pendingTrash(id string) bool {
 		if c.Kind == state.KindFile && !remoteChanged(c, cb) && p.writable(id) {
 			return true
 		}
-		if c.Kind == state.KindDir && (p.isDeletable(c.NodeID) || p.pendingTrash(c.NodeID)) {
+		// As localDeleted trashes them: a folder only from one the user
+		// can write to.
+		if c.Kind == state.KindDir && (p.isDeletable(c.NodeID) && p.writable(id) || p.pendingTrash(c.NodeID)) {
 			return true
 		}
 	}
