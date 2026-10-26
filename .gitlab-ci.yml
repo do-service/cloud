@@ -1,0 +1,255 @@
+# CI for the cloud monorepo (docs/mvp-tasks.md E0-6), same shape as chat's:
+# lint/test on every MR and the default branch, image build + push to
+# registry.exz-vps.ru on the default branch only. No deploy stage yet.
+#
+# Before the first default-branch pipeline, set in Settings → CI/CD →
+# Variables (Protected + Masked): DOCKER_REGISTRY_USER /
+# DOCKER_REGISTRY_PASSWORD — login for registry.exz-vps.ru.
+stages:
+  - lint
+  - test
+  - build
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+variables:
+  DOCKER_REGISTRY_HOST: registry.exz-vps.ru
+  DOCKER_IMAGE: registry.exz-vps.ru/fullstack/cloud
+
+.go:
+  image: golang:1.27-alpine
+  variables:
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
+  cache:
+    key: backend-go-$CI_COMMIT_REF_SLUG
+    paths:
+      - .cache/go-build
+      - .cache/go-mod
+
+.node:
+  image: node:24-alpine
+  cache:
+    key: frontend-npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - frontend/.npm
+
+backend:lint:
+  extends: .go
+  stage: lint
+  script:
+    - cd backend
+    - test -z "$(gofmt -l .)" || (gofmt -l . && echo "gofmt found unformatted files (run 'make fmt')" && exit 1)
+    - go vet ./...
+
+backend:test:
+  extends: .go
+  stage: test
+  variables:
+    POSTGRES_DB: cloud_test
+    POSTGRES_USER: cloud
+    POSTGRES_PASSWORD: cloud
+    POSTGRES_HOST_AUTH_METHOD: trust
+    TEST_DATABASE_URL: "postgres://cloud:cloud@postgres:5432/cloud_test?sslmode=disable"
+  services:
+    - name: postgres:18-alpine
+      alias: postgres
+  script:
+    - cd backend
+    - go build ./...
+    # -p 1: packages share one test database.
+    - go test ./... -count=1 -p 1
+
+# OIDC sign-in end to end against a real Keycloak (make test-e2e). Its
+# own job: Keycloak takes half a minute to start, and backend:test
+# shouldn't wait for it. The test creates its realm itself — a service
+# can't mount the repository's deploy/keycloak/realm-cloud.json.
+backend:e2e:
+  extends: .go
+  stage: test
+  variables:
+    POSTGRES_DB: cloud_test
+    POSTGRES_USER: cloud
+    POSTGRES_PASSWORD: cloud
+    POSTGRES_HOST_AUTH_METHOD: trust
+    TEST_DATABASE_URL: "postgres://cloud:cloud@postgres:5432/cloud_test?sslmode=disable"
+    KC_BOOTSTRAP_ADMIN_USERNAME: admin
+    KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    E2E_KEYCLOAK_URL: "http://keycloak:8180"
+  services:
+    - name: postgres:18-alpine
+      alias: postgres
+    - name: quay.io/keycloak/keycloak:26.7.1
+      alias: keycloak
+      command: ["start-dev", "--http-port=8180"]
+  script:
+    - cd backend
+    # As make test-e2e does; the image has no make.
+    - go test ./internal/auth -run 'E2E$' -count=1 -v
+
+# Listing benchmark (E1-8, bench/README.md) at CI scale: 2 000 users but
+# 300k nodes instead of 20M, with the same 50 000-item folder and the G2
+# threshold (p95 < 200 ms), so a listing query or index that stops scaling
+# fails the MR. The full-size run and the workday scenario are manual.
+# k6 comes as the release binary: its image has no Go, this one no k6.
+backend:bench:
+  extends: .go
+  stage: test
+  variables:
+    POSTGRES_DB: cloud_bench
+    POSTGRES_USER: cloud
+    POSTGRES_PASSWORD: cloud
+    POSTGRES_HOST_AUTH_METHOD: trust
+    BENCH_DATABASE_URL: "postgres://cloud:cloud@postgres:5432/cloud_bench?sslmode=disable"
+    K6_VERSION: "2.3.0"
+  services:
+    - name: postgres:18-alpine
+      alias: postgres
+  script:
+    - K6_DIST="k6-v${K6_VERSION}-linux-$(go env GOARCH)"
+    - wget -qO- "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/${K6_DIST}.tar.gz" | tar -xzf - -C /usr/local/bin --strip-components=1 "${K6_DIST}/k6"
+    - cd backend
+    - go build -o bin/server ./cmd/server
+    - go build -o bin/benchgen ./cmd/benchgen
+    - ./bin/benchgen -nodes 300000 -tokens ../bench/tokens.jsonl
+    # As make bench-server does, from the built binary; the image has no make.
+    - DATABASE_URL="$BENCH_DATABASE_URL" HTTP_ADDR=:8091 METRICS_ADDR= DATA_DIR=bin/bench-data PUBLIC_BASE_URL=http://localhost:8091 ./bin/server > bin/server.log 2>&1 &
+    - for i in $(seq 30); do wget -qO- http://localhost:8091/readyz >/dev/null 2>&1 && break; sleep 1; done
+    - BASE_URL=http://localhost:8091 k6 run ../bench/k6/listing-50k.js
+  artifacts:
+    when: on_failure
+    paths:
+      - backend/bin/server.log
+
+# WebDAV compatibility (E7-5): litmus and rclone against a server built
+# here, on its own database (scripts/webdav-compat.sh; make test-webdav runs
+# the same locally). Debian's Go image: litmus isn't packaged for alpine.
+backend:webdav:
+  extends: .go
+  image: golang:1.27
+  stage: test
+  variables:
+    POSTGRES_DB: cloud_webdav
+    POSTGRES_USER: cloud
+    POSTGRES_PASSWORD: cloud
+    POSTGRES_HOST_AUTH_METHOD: trust
+  services:
+    - name: postgres:18-alpine
+      alias: postgres
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends litmus rclone >/dev/null
+    - cd backend
+    - go build -o bin/server ./cmd/server
+    - DATABASE_URL="postgres://cloud:cloud@postgres:5432/cloud_webdav?sslmode=disable" HTTP_ADDR=:8090 METRICS_ADDR= DATA_DIR=bin/webdav-data PUBLIC_BASE_URL=http://localhost:8090 ADMIN_USERNAME=webdav ADMIN_PASSWORD=webdav-compat ./bin/server > bin/server.log 2>&1 &
+    - BASE_URL=http://localhost:8090 USERNAME=webdav PASSWORD=webdav-compat scripts/webdav-compat.sh
+  artifacts:
+    when: on_failure
+    paths:
+      - backend/bin/server.log
+
+frontend:lint:
+  extends: .node
+  stage: lint
+  script:
+    - cd frontend
+    - npm ci --cache .npm --prefer-offline
+    - npx tsc -b
+
+frontend:test:
+  extends: .node
+  stage: test
+  script:
+    - cd frontend
+    - npm ci --cache .npm --prefer-offline
+    - npm run test
+
+# Desktop client (desktop/, docs/desktop-client.md). Linux, CGO_ENABLED=0:
+# only the packages that don't import Wails (gtk and webkit need cgo), so
+# the engine's code is checked here and the app itself is built on a
+# developer's machine until the per-OS builds (E15). The FSEvents watcher
+# is excluded by its build tag; make test runs it on a Mac.
+.desktop-go:
+  extends: .go
+  variables:
+    CGO_ENABLED: "0"
+  cache:
+    key: desktop-go-$CI_COMMIT_REF_SLUG
+    paths:
+      - .cache/go-build
+      - .cache/go-mod
+  before_script:
+    - cd desktop
+    - PKGS=$(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+
+desktop:lint:
+  extends: .desktop-go
+  stage: lint
+  script:
+    - test -z "$(gofmt -l .)" || (gofmt -l . && echo "gofmt found unformatted files (run 'make fmt')" && exit 1)
+    - go vet $PKGS
+
+# The integration tests (internal/api, signin, engine) build
+# ../backend/cmd/server (plain Go, CGO off: previews only need the vips
+# command, which the server does without) and run it on a throwaway
+# database of their own on this postgres; TEST_POSTGRES_URL is where they
+# create and drop it. Without the service they would skip.
+desktop:test:
+  extends: .desktop-go
+  stage: test
+  variables:
+    POSTGRES_DB: cloud_test
+    POSTGRES_USER: cloud
+    POSTGRES_PASSWORD: cloud
+    POSTGRES_HOST_AUTH_METHOD: trust
+    TEST_POSTGRES_URL: "postgres://cloud:cloud@postgres:5432/cloud_test?sslmode=disable"
+  services:
+    - name: postgres:18-alpine
+      alias: postgres
+  script:
+    - go test $PKGS -count=1
+
+# The window's frontend type-checks against the web code it imports
+# (@web → frontend/src) with its own node_modules only.
+desktop:frontend:
+  extends: .node
+  stage: lint
+  cache:
+    key: desktop-npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - desktop/frontend/.npm
+  script:
+    - cd desktop/frontend
+    - npm ci --cache .npm --prefer-offline
+    - npx tsc -b
+
+# The image build is the real end-to-end build check (frontend bundle
+# embedded into the Go binary), so it runs on MRs too — just without
+# logging in or pushing. Layer cache lives in the registry under
+# :buildcache so it survives the ephemeral dind runner (see chat's
+# .build-docker-cached for the same reasoning).
+image:build:
+  image: docker:24.0.5
+  stage: build
+  needs:
+    - backend:test
+    - frontend:test
+  cache: []
+  before_script:
+    - docker buildx create --name ci-builder --driver docker-container 2>/dev/null || true
+    - docker buildx use ci-builder
+  script:
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker login "$DOCKER_REGISTRY_HOST" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+        OUTPUT="--push --tag $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA --tag $DOCKER_IMAGE:latest --cache-to type=registry,ref=$DOCKER_IMAGE:buildcache,mode=max"
+      else
+        OUTPUT="--output type=cacheonly"
+      fi
+      docker buildx build \
+        --build-arg VERSION=$CI_COMMIT_SHORT_SHA \
+        --cache-from type=registry,ref=$DOCKER_IMAGE:buildcache \
+        $OUTPUT \
+        .

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- `make app` fills in @VERSION@ and @SHORT_VERSION@. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleName</key>
+	<string>Облако</string>
+	<key>CFBundleDisplayName</key>
+	<string>Облако</string>
+	<key>CFBundleExecutable</key>
+	<string>cloud-desktop</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.do-service.cloud</string>
+	<key>CFBundleVersion</key>
+	<string>@SHORT_VERSION@</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@SHORT_VERSION@</string>
+	<key>CFBundleGetInfoString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleIconFile</key>
+	<string>icons</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ru</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<!-- As MACOSX_DEPLOYMENT_TARGET in the Makefile. -->
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<!-- A menu-bar app (ActivationPolicyAccessory in main.go): without
+	     this the Dock icon flashes at launch until the policy applies. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>

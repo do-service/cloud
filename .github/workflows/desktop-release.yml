@@ -1,0 +1,97 @@
+# The macOS desktop client (E15-1): universal .app in a DMG, built by
+# `make dmg` in desktop/. Ad-hoc signed only, until there's an Apple
+# Developer ID for signing and notarization. Every run keeps the DMG as a
+# workflow artifact; a v* tag also attaches it to that tag's release.
+name: desktop-release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "desktop/**"
+      # The window's frontend bundles the web code (@web → frontend/src).
+      - "frontend/src/**"
+      - ".github/workflows/desktop-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  macos:
+    # Apple silicon; the amd64 half is cross-built with the same clang.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # git describe needs the tags for the version.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      # Only the window's own packages: tsconfig and vite pin every package
+      # the web code imports to desktop/frontend/node_modules.
+      - name: npm ci
+        working-directory: desktop/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: make dmg
+        working-directory: desktop
+        run: |
+          make dmg
+          lipo -archs "bin/Облако.app/Contents/MacOS/cloud-desktop"
+          codesign -dv "bin/Облако.app"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-macos
+          path: |
+            desktop/bin/*.dmg
+            desktop/bin/*.dmg.sha256
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: macos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-macos
+          path: dist
+
+      # release.yml may be creating the same release right now: if our
+      # create loses that race, the release exists and the upload goes on.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # Same flags as release.yml: whichever wins, the release looks alike.
+            flags=""
+            case "$TAG" in *-*) flags="--prerelease" ;; esac
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags ||
+              gh release view "$TAG" >/dev/null
+          fi
+          gh release upload "$TAG" dist/*.dmg dist/*.dmg.sha256 --clobber

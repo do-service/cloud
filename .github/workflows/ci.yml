@@ -1,0 +1,375 @@
+# CI for the cloud monorepo: the same jobs as .gitlab-ci.yml (its comments
+# explain why each one exists), on every pull request and on main. Lint
+# and test jobs run in parallel; the image build waits for the tests, as
+# GitLab's image:build does, and pushes only from main.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to a pull request supersedes its running checks; runs on main
+# all finish, so every commit there gets a result and an image.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  K6_VERSION: "2.3.0"
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  backend-lint:
+    name: backend / lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && echo "gofmt found unformatted files (run 'make fmt')" && exit 1)
+      - run: go vet ./...
+
+  backend-test:
+    name: backend / test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: cloud_test
+          POSTGRES_USER: cloud
+          POSTGRES_PASSWORD: cloud
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cloud" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://cloud:cloud@localhost:5432/cloud_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: go build ./...
+      # -p 1: packages share one test database.
+      - run: go test ./... -count=1 -p 1
+
+  # OIDC sign-in end to end against a real Keycloak. Service containers
+  # can't take a command (start-dev), so it runs from a step; the test
+  # creates its own realm through the admin API.
+  backend-e2e:
+    name: backend / e2e (Keycloak)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: cloud_test
+          POSTGRES_USER: cloud
+          POSTGRES_PASSWORD: cloud
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cloud" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://cloud:cloud@localhost:5432/cloud_test?sslmode=disable
+      E2E_KEYCLOAK_URL: http://localhost:8180
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      # First, so it boots while Go and the modules are set up.
+      - name: Start Keycloak
+        working-directory: .
+        run: >-
+          docker run -d --name keycloak -p 8180:8180
+          -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+          quay.io/keycloak/keycloak:26.7.1 start-dev --http-port=8180
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: go test -c -o /dev/null ./internal/auth
+      - name: Wait for Keycloak
+        run: |
+          for _ in $(seq 120); do
+            curl -fsS -o /dev/null http://localhost:8180/realms/master/.well-known/openid-configuration && exit 0
+            sleep 1
+          done
+          docker logs keycloak
+          exit 1
+      # As make test-e2e does.
+      - run: go test ./internal/auth -run 'E2E$' -count=1 -v
+      - name: Keycloak log
+        if: failure()
+        run: docker logs keycloak
+
+  # Listing benchmark at CI scale: 300k nodes, the same 50 000-item folder
+  # and G2 threshold (p95 < 200 ms) as the full-size run in bench/README.md.
+  backend-bench:
+    name: backend / bench
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: cloud_bench
+          POSTGRES_USER: cloud
+          POSTGRES_PASSWORD: cloud
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cloud" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      BENCH_DATABASE_URL: postgres://cloud:cloud@localhost:5432/cloud_bench?sslmode=disable
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Install k6
+        run: |
+          K6_DIST="k6-v${K6_VERSION}-linux-$(go env GOARCH)"
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/${K6_DIST}.tar.gz" |
+            tar -xzf - -C "$RUNNER_TEMP/bin" --strip-components=1 "${K6_DIST}/k6"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: go build -o bin/server ./cmd/server
+      - run: go build -o bin/benchgen ./cmd/benchgen
+      - run: ./bin/benchgen -nodes 300000 -tokens ../bench/tokens.jsonl
+      # As make bench-server does, from the built binary.
+      - name: Start server
+        run: |
+          DATABASE_URL="$BENCH_DATABASE_URL" HTTP_ADDR=:8091 METRICS_ADDR='' DATA_DIR=bin/bench-data \
+            PUBLIC_BASE_URL=http://localhost:8091 nohup ./bin/server > bin/server.log 2>&1 &
+          for _ in $(seq 30); do curl -fsS -o /dev/null http://localhost:8091/readyz && exit 0; sleep 1; done
+          exit 1
+      - run: k6 run ../bench/k6/listing-50k.js
+        env:
+          BASE_URL: http://localhost:8091
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: bench-server-log
+          path: backend/bin/server.log
+
+  # WebDAV compatibility: litmus and rclone against a server built here, on
+  # its own database (scripts/webdav-compat.sh; make test-webdav runs the
+  # same locally). Ubuntu 24.04, not -latest: its litmus is 0.13, as in
+  # Debian trixie that make test-webdav and GitLab use, and KNOWN_FAILURES
+  # in the script are that version's; 26.04 ships 0.17.
+  backend-webdav:
+    name: backend / webdav
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: cloud_webdav
+          POSTGRES_USER: cloud
+          POSTGRES_PASSWORD: cloud
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cloud" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Install litmus and rclone
+        working-directory: .
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends litmus rclone >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: go build -o bin/server ./cmd/server
+      - name: Start server
+        run: |
+          DATABASE_URL="postgres://cloud:cloud@localhost:5432/cloud_webdav?sslmode=disable" HTTP_ADDR=:8090 \
+            METRICS_ADDR='' DATA_DIR=bin/webdav-data PUBLIC_BASE_URL=http://localhost:8090 \
+            ADMIN_USERNAME=webdav ADMIN_PASSWORD=webdav-compat nohup ./bin/server > bin/server.log 2>&1 &
+      - run: scripts/webdav-compat.sh
+        env:
+          BASE_URL: http://localhost:8090
+          USERNAME: webdav
+          PASSWORD: webdav-compat
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: webdav-server-log
+          path: backend/bin/server.log
+
+  frontend-lint:
+    name: frontend / lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefer-offline
+      - run: npx tsc -b
+
+  frontend-test:
+    name: frontend / test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefer-offline
+      - run: npm run test
+
+  # Desktop client, CGO off: only the packages that don't import Wails (gtk
+  # and webkit need cgo); the FSEvents watcher is excluded by its build tag.
+  desktop-lint:
+    name: desktop / lint
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && echo "gofmt found unformatted files (run 'make fmt')" && exit 1)
+      - name: go vet
+        run: |
+          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+          go vet "${pkgs[@]}"
+
+  # The integration tests build ../backend/cmd/server and run it on a
+  # throwaway database they create through TEST_POSTGRES_URL, so both
+  # modules' go.sum key the cache.
+  desktop-test:
+    name: desktop / test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: cloud_test
+          POSTGRES_USER: cloud
+          POSTGRES_PASSWORD: cloud
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cloud" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CGO_ENABLED: "0"
+      TEST_POSTGRES_URL: postgres://cloud:cloud@localhost:5432/cloud_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: |
+            desktop/go.sum
+            backend/go.sum
+      - name: go test
+        run: |
+          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+          go test "${pkgs[@]}" -count=1
+
+  # The window's frontend type-checks against the web code it imports
+  # (@web → frontend/src) with its own node_modules only.
+  desktop-frontend:
+    name: desktop / frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: npm ci --prefer-offline
+      - run: npx tsc -b
+
+  # The real end-to-end build check (the frontend bundle embedded into the Go
+  # binary), so it runs on pull requests too, without pushing. From main it
+  # pushes :edge and :sha-<commit> (linux/amd64 only; releases are
+  # multi-arch, see release.yml).
+  image:
+    name: image
+    needs: [backend-test, frontend-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=edge,branch=main
+            type=sha
+          labels: |
+            org.opencontainers.image.title=Cloud
+            org.opencontainers.image.licenses=Apache-2.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          build-args: VERSION=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ env.PUSH == 'true' }}
+          outputs: ${{ env.PUSH != 'true' && 'type=cacheonly' || '' }}
+          cache-from: type=gha,scope=image
+          cache-to: type=gha,scope=image,mode=max

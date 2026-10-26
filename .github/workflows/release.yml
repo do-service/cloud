@@ -1,0 +1,105 @@
+# Release: a v* tag publishes the multi-arch image to ghcr.io and creates
+# the GitHub release with generated notes. Manual runs (workflow_dispatch)
+# are meant to be started on a tag to redo a failed release; on a branch
+# they push only the :sha-<commit> image and skip the release.
+#
+# desktop-release.yml uploads the desktop build to the same release, so
+# whichever workflow gets there first creates it and the other reuses it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The build stages cross-compile on the runner's platform (see the
+      # Dockerfile); QEMU only runs the runtime stage's apk and adduser.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          # latest only for releases, not for pre-release tags like v1.0.0-rc.1.
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=sha
+          labels: |
+            org.opencontainers.image.title=Cloud
+            org.opencontainers.image.description=Self-hosted file cloud: a single Go binary with PostgreSQL, WebDAV and WOPI editors
+            org.opencontainers.image.licenses=Apache-2.0
+          annotations: |
+            org.opencontainers.image.title=Cloud
+            org.opencontainers.image.description=Self-hosted file cloud: a single Go binary with PostgreSQL, WebDAV and WOPI editors
+            org.opencontainers.image.licenses=Apache-2.0
+        env:
+          # A multi-arch image is an index: annotate it as well as each
+          # manifest, so the registry shows them.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          push: true
+          provenance: mode=max
+          sbom: true
+          # The amd64 layers are the ones CI's image job caches.
+          cache-from: |
+            type=gha,scope=image
+            type=gha,scope=release
+          cache-to: type=gha,scope=release,mode=max
+
+  release:
+    name: GitHub release
+    if: github.ref_type == 'tag'
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      # Idempotent: a release desktop-release.yml (or a previous run) already
+      # made is kept as is; losing a create race to it counts as success.
+      - name: Create release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+          flags=""
+          case "$TAG" in *-*) flags="--prerelease" ;; esac
+          gh release create "$TAG" --verify-tag --generate-notes --title "$TAG" $flags ||
+            gh release view "$TAG" >/dev/null

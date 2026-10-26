@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stands in for vips in tests: "vips thumbnail_source [descriptor=0] OUT SIZE ..."
+# answers WEBP:SIZE:INPUT, counting its runs in $FAKE_VIPS_RUNS; input
+# starting with BAD fails as vips does on a file it can't read.
+in=$(cat)
+echo run >> "$FAKE_VIPS_RUNS"
+case "$in" in
+BAD*) echo "VipsForeignLoad: source is not in a known format" >&2; exit 1 ;;
+esac
+printf 'WEBP:%s:%s' "$4" "$in"

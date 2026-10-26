@@ -1,0 +1,17 @@
+node_modules/
+dist/
+!backend/internal/webui/dist/
+backend/internal/webui/dist/*
+!backend/internal/webui/dist/.gitkeep
+!desktop/cmd/cloud-desktop/dist/
+desktop/cmd/cloud-desktop/dist/*
+!desktop/cmd/cloud-desktop/dist/.gitkeep
+desktop/bin/
+backend/bin/
+backend/data/
+*.tsbuildinfo
+.env
+cloud.env
+.DS_Store
+.idea/
+bench/tokens.jsonl

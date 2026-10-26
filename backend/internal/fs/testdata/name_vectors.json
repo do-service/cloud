@@ -1,0 +1,345 @@
+[
+  {
+    "note": "ascii",
+    "in": "report.txt",
+    "valid": true,
+    "name": "report.txt",
+    "key": "report.txt"
+  },
+  {
+    "note": "ascii upper case",
+    "in": "README.MD",
+    "valid": true,
+    "name": "README.MD",
+    "key": "readme.md"
+  },
+  {
+    "note": "cyrillic with ё",
+    "in": "Отчёт за 2026.docx",
+    "valid": true,
+    "name": "Отчёт за 2026.docx",
+    "key": "отчёт за 2026.docx"
+  },
+  {
+    "note": "cyrillic upper case with Ё",
+    "in": "ЁЛКА И ЙОГУРТ",
+    "valid": true,
+    "name": "ЁЛКА И ЙОГУРТ",
+    "key": "ёлка и йогурт"
+  },
+  {
+    "note": "NFC é",
+    "in": "Café",
+    "valid": true,
+    "name": "Café",
+    "key": "café"
+  },
+  {
+    "note": "NFD é (as macOS sends it)",
+    "in": "Café",
+    "valid": true,
+    "name": "Café",
+    "key": "café"
+  },
+  {
+    "note": "NFD й (и + breve)",
+    "in": "Мой файл",
+    "valid": true,
+    "name": "Мой файл",
+    "key": "мой файл"
+  },
+  {
+    "note": "NFD Ё (Е + diaeresis)",
+    "in": "Ёлка",
+    "valid": true,
+    "name": "Ёлка",
+    "key": "ёлка"
+  },
+  {
+    "note": "emoji",
+    "in": "emoji 🎉",
+    "valid": true,
+    "name": "emoji 🎉",
+    "key": "emoji 🎉"
+  },
+  {
+    "note": "emoji ZWJ sequence",
+    "in": "👨‍👩‍👧 семья",
+    "valid": true,
+    "name": "👨‍👩‍👧 семья",
+    "key": "👨‍👩‍👧 семья"
+  },
+  {
+    "note": "emoji skin tone modifier",
+    "in": "👍🏽.png",
+    "valid": true,
+    "name": "👍🏽.png",
+    "key": "👍🏽.png"
+  },
+  {
+    "note": "Turkish dotted capital İ",
+    "in": "İstanbul",
+    "valid": true,
+    "name": "İstanbul",
+    "key": "istanbul"
+  },
+  {
+    "note": "Turkish dotless ı",
+    "in": "ılık",
+    "valid": true,
+    "name": "ılık",
+    "key": "ılık"
+  },
+  {
+    "note": "Turkish upper case",
+    "in": "DİYARBAKIR",
+    "valid": true,
+    "name": "DİYARBAKIR",
+    "key": "diyarbakir"
+  },
+  {
+    "note": "German ß stays ß",
+    "in": "Straße",
+    "valid": true,
+    "name": "Straße",
+    "key": "straße"
+  },
+  {
+    "note": "German SS is a different key than ß",
+    "in": "STRASSE",
+    "valid": true,
+    "name": "STRASSE",
+    "key": "strasse"
+  },
+  {
+    "note": "capital sharp s ẞ",
+    "in": "GROẞ",
+    "valid": true,
+    "name": "GROẞ",
+    "key": "groß"
+  },
+  {
+    "note": "Greek final sigma: no special casing",
+    "in": "ΣΊΣΥΦΟΣ",
+    "valid": true,
+    "name": "ΣΊΣΥΦΟΣ",
+    "key": "σίσυφοσ"
+  },
+  {
+    "note": "combining marks in non-canonical order",
+    "in": "ậ",
+    "valid": true,
+    "name": "ậ",
+    "key": "ậ"
+  },
+  {
+    "note": "combining marks in canonical order",
+    "in": "ậ",
+    "valid": true,
+    "name": "ậ",
+    "key": "ậ"
+  },
+  {
+    "note": "Hangul conjoining jamo compose",
+    "in": "각",
+    "valid": true,
+    "name": "각",
+    "key": "각"
+  },
+  {
+    "note": "Japanese katakana",
+    "in": "ファイル",
+    "valid": true,
+    "name": "ファイル",
+    "key": "ファイル"
+  },
+  {
+    "note": "half-width katakana: NFC, not NFKC",
+    "in": "ﾌｧｲﾙ",
+    "valid": true,
+    "name": "ﾌｧｲﾙ",
+    "key": "ﾌｧｲﾙ"
+  },
+  {
+    "note": "ligature ﬁ: NFC keeps it",
+    "in": "ﬁle",
+    "valid": true,
+    "name": "ﬁle",
+    "key": "ﬁle"
+  },
+  {
+    "note": "Angstrom sign → Å",
+    "in": "Å",
+    "valid": true,
+    "name": "Å",
+    "key": "å"
+  },
+  {
+    "note": "Kelvin sign → K",
+    "in": "K.txt",
+    "valid": true,
+    "name": "K.txt",
+    "key": "k.txt"
+  },
+  {
+    "note": "Ohm sign → Ω",
+    "in": "Ω",
+    "valid": true,
+    "name": "Ω",
+    "key": "ω"
+  },
+  {
+    "note": "full-width Latin",
+    "in": "ＡＢＣ",
+    "valid": true,
+    "name": "ＡＢＣ",
+    "key": "ａｂｃ"
+  },
+  {
+    "note": "titlecase digraph ǅ",
+    "in": "ǅungla",
+    "valid": true,
+    "name": "ǅungla",
+    "key": "ǆungla"
+  },
+  {
+    "note": "Cherokee lower case (Unicode 8+)",
+    "in": "ᎠᎡᎢ",
+    "valid": true,
+    "name": "ᎠᎡᎢ",
+    "key": "ꭰꭱꭲ"
+  },
+  {
+    "note": "Arabic RTL",
+    "in": "ملف.txt",
+    "valid": true,
+    "name": "ملف.txt",
+    "key": "ملف.txt"
+  },
+  {
+    "note": "BOM at the start",
+    "in": "﻿file",
+    "valid": true,
+    "name": "﻿file",
+    "key": "﻿file"
+  },
+  {
+    "note": "zero-width space",
+    "in": "a​b",
+    "valid": true,
+    "name": "a​b",
+    "key": "a​b"
+  },
+  {
+    "note": "DEL is not a control below U+0020",
+    "in": "del",
+    "valid": true,
+    "name": "del",
+    "key": "del"
+  },
+  {
+    "note": "characters Windows forbids are allowed",
+    "in": "win<>:\"\\|?*",
+    "valid": true,
+    "name": "win<>:\"\\|?*",
+    "key": "win<>:\"\\|?*"
+  },
+  {
+    "note": "leading and trailing spaces",
+    "in": "  spaces  ",
+    "valid": true,
+    "name": "  spaces  ",
+    "key": "  spaces  "
+  },
+  {
+    "note": "trailing dot",
+    "in": "name.",
+    "valid": true,
+    "name": "name.",
+    "key": "name."
+  },
+  {
+    "note": "leading dots",
+    "in": "..hidden",
+    "valid": true,
+    "name": "..hidden",
+    "key": "..hidden"
+  },
+  {
+    "note": "macOS metadata name",
+    "in": ".DS_Store",
+    "valid": true,
+    "name": ".DS_Store",
+    "key": ".ds_store"
+  },
+  {
+    "note": "Office lock file",
+    "in": "~$Отчёт.docx",
+    "valid": true,
+    "name": "~$Отчёт.docx",
+    "key": "~$отчёт.docx"
+  },
+  {
+    "note": "127 × я = 254 bytes",
+    "in": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+    "valid": true,
+    "name": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+    "key": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя"
+  },
+  {
+    "note": "100 × NFD é: 300 bytes in, 200 after NFC",
+    "in": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "valid": true,
+    "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "key": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+  },
+  {
+    "note": "empty",
+    "valid": false
+  },
+  {
+    "note": "dot",
+    "in": ".",
+    "valid": false
+  },
+  {
+    "note": "dot dot",
+    "in": "..",
+    "valid": false
+  },
+  {
+    "note": "slash",
+    "in": "a/b",
+    "valid": false
+  },
+  {
+    "note": "NUL",
+    "in": "a\u0000b",
+    "valid": false
+  },
+  {
+    "note": "newline",
+    "in": "line\nbreak",
+    "valid": false
+  },
+  {
+    "note": "tab",
+    "in": "tab\t",
+    "valid": false
+  },
+  {
+    "note": "128 × я = 256 bytes",
+    "in": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+    "valid": false
+  },
+  {
+    "note": "invalid UTF-8",
+    "inHex": "fffe",
+    "valid": false
+  },
+  {
+    "note": "UTF-8 encoded surrogate",
+    "inHex": "eda080",
+    "valid": false
+  }
+]

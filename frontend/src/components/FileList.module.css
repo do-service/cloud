@@ -1,0 +1,345 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  overflow: hidden;
+}
+
+.header,
+.row {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--mantine-spacing-xs);
+}
+
+.header {
+  height: 40px;
+  flex: none;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-default-hover);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  outline: none;
+  contain: strict;
+}
+
+.scroll:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--mantine-primary-color-filled);
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 44px;
+  cursor: default;
+  user-select: none;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.row:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.row[data-selected] {
+  background: var(--mantine-primary-color-light);
+}
+
+.scroll:focus-visible .row[data-active] {
+  box-shadow: inset 2px 0 0 var(--mantine-primary-color-filled);
+}
+
+/* ".." is never selected: the keyboard's place on it shows as a selection
+   would, while the list has the focus. */
+.scroll:focus .row[data-up][data-active] {
+  background: var(--mantine-primary-color-light);
+}
+
+.check {
+  flex: none;
+  width: 32px;
+  display: flex;
+  justify-content: center;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  padding-inline: var(--mantine-spacing-xs);
+}
+
+.size,
+.mtime {
+  flex: none;
+  text-align: right;
+  padding-inline: var(--mantine-spacing-xs);
+  white-space: nowrap;
+}
+
+.size {
+  width: 110px;
+}
+
+.mtime {
+  width: 190px;
+}
+
+.folderIcon {
+  color: var(--mantine-color-yellow-6);
+  flex: none;
+}
+
+/* Narrow screens keep the name readable: size and date go first. */
+@media (max-width: 40em) {
+  .mtime {
+    display: none;
+  }
+}
+
+@media (max-width: 28em) {
+  .size {
+    display: none;
+  }
+}
+
+/* A preview the size of an icon row: the icon shows until it loads. */
+.thumb {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--mantine-radius-xs);
+  opacity: 0;
+}
+
+.thumb img[data-loaded] {
+  opacity: 1;
+}
+
+.row[data-drop-target] {
+  background: var(--mantine-primary-color-light);
+  box-shadow: inset 0 0 0 2px var(--mantine-primary-color-filled);
+}
+
+/* Tiles: a line of them per virtual row, stretched to share its width. */
+.gridRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px;
+  cursor: default;
+  user-select: none;
+  border-radius: var(--mantine-radius-md);
+}
+
+.tile:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.tile[data-selected] {
+  background: var(--mantine-primary-color-light);
+}
+
+.scroll:focus-visible .tile[data-active] {
+  box-shadow: inset 0 0 0 2px var(--mantine-primary-color-filled);
+}
+
+.tile[data-drop-target] {
+  background: var(--mantine-primary-color-light);
+  box-shadow: inset 0 0 0 2px var(--mantine-primary-color-filled);
+}
+
+.tilePicture {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--mantine-color-dimmed);
+}
+
+/* Two lines of name, whatever their length: the rest is in the title. */
+.tileName {
+  flex: none;
+  height: calc(2 * var(--mantine-line-height-sm) * var(--mantine-font-size-sm));
+  overflow-wrap: anywhere;
+}
+
+/* Shown on hover and once selected, as the way to pick tiles by pointer
+   alone. */
+.tileCheck {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  opacity: 0;
+}
+
+.tile:hover .tileCheck,
+.tile[data-selected] .tileCheck {
+  opacity: 1;
+}
+
+/* The context menu's button for a finger (FileList: coarse pointers only). */
+.rowMenu {
+  flex: none;
+}
+
+.tileMenu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+@media (pointer: coarse) {
+  /* A long press selects: no callout or text selection over it. */
+  .row,
+  .tile {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
+  /* No hover to reveal them: shown while selecting. */
+  .scroll[data-selecting] .tileCheck {
+    opacity: 1;
+  }
+}
+
+.tileThumb {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.tileThumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.tileThumb img[data-loaded] {
+  opacity: 1;
+}
+
+/* The drag image: rendered off screen only to be snapshotted by the
+   browser. The padding on the left and top is transparent, and keeps the
+   cards off the pointer. */
+.dragImage {
+  position: fixed;
+  top: -300px;
+  left: 0;
+  padding: 24px 16px 16px 24px;
+  font-family: var(--mantine-font-family);
+}
+
+.dragStack {
+  position: relative;
+  width: 172px;
+  height: 52px;
+}
+
+.dragCard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 160px;
+  height: 40px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  box-shadow: var(--mantine-shadow-sm);
+}
+
+.dragIcon {
+  position: relative;
+  display: flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-xs);
+  background: var(--mantine-color-gray-light);
+  color: var(--mantine-color-dimmed);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.dragIcon[data-folder] {
+  background: var(--mantine-color-yellow-6);
+}
+
+.dragIcon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dragName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.dragCount {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 1;
+  padding: 1px 8px;
+  border-radius: var(--mantine-radius-xl);
+  background: var(--mantine-primary-color-filled);
+  color: var(--mantine-color-white);
+  font-size: var(--mantine-font-size-xs);
+  white-space: nowrap;
+}

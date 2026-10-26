@@ -1,0 +1,17 @@
+# Build context is the repo root (Dockerfile needs both frontend/ and
+# backend/); keep host build artefacts out so they can't shadow the image's
+# own `npm ci` / embedded dist.
+.git
+.env
+.env.*
+**/node_modules
+frontend/dist
+frontend/*.tsbuildinfo
+backend/bin
+backend/data
+backend/internal/webui/dist/*
+!backend/internal/webui/dist/.gitkeep
+docs
+deploy
+.DS_Store
+.idea

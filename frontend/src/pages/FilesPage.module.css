@@ -1,0 +1,61 @@
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--mantine-primary-color-filled);
+  border-radius: var(--mantine-radius-md);
+  background: color-mix(in srgb, var(--mantine-color-body) 85%, transparent);
+  pointer-events: none;
+}
+
+/* Where the list or the empty state goes: the whole height left, so a
+   right-click below the rows still lands in it. */
+.listArea {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The list and, beside it, the details panel. */
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--mantine-spacing-sm);
+}
+
+.crumb {
+  border-radius: var(--mantine-radius-sm);
+  padding-inline: 2px;
+}
+
+.crumb[data-drop-target] {
+  background: var(--mantine-primary-color-light);
+  box-shadow: 0 0 0 2px var(--mantine-primary-color-filled);
+}
+
+/* A phone's path stays on one line, each crumb shrinking to an ellipsis
+   rather than wrapping. */
+.crumbsLine {
+  flex: 1;
+  flex-wrap: nowrap;
+}
+
+.crumbsLine > * {
+  min-width: 0;
+}
+
+.crumbsLine > :global(.mantine-Breadcrumbs-separator) {
+  flex: none;
+}
+
+/* The folder shown gives way last: the crumbs above it shrink first. */
+.crumbsLine > :last-child:not(:only-child) {
+  flex-shrink: 0;
+  max-width: 60%;
+}

@@ -1,0 +1,58 @@
+# Weekly updates, minor and patch versions grouped into one pull request per
+# ecosystem and directory; majors come one by one, since they need reading
+# the changelog.
+#
+# Pinned on purpose, update by hand: Go in go.mod (the golang image's patch
+# version, see CLAUDE.md) and Wails v3 in desktop/go.mod (a beta pinned
+# to an exact tag, see desktop/README.md).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      backend-go:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /desktop
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: github.com/wailsapp/wails/v3
+    groups:
+      desktop-go:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /desktop/frontend
+    schedule:
+      interval: weekly
+    groups:
+      desktop-npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        update-types: [minor, patch]

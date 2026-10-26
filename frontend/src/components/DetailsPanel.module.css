@@ -1,0 +1,55 @@
+.panel {
+  flex: none;
+  width: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+/* A fixed box, so stepping through files doesn't make the details below
+   jump about. */
+.preview {
+  position: relative;
+  display: flex;
+  height: 220px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-default-hover);
+  color: var(--mantine-color-dimmed);
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+
+.image[data-loaded] {
+  opacity: 1;
+}
+
+/* Fills the box from the top; what doesn't fit is cut off by it. */
+.text {
+  align-self: stretch;
+  width: 100%;
+  margin: 0;
+  padding: var(--mantine-spacing-xs);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+  color: var(--mantine-color-text);
+}
+
+.name,
+.value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

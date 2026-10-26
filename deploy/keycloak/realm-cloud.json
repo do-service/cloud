@@ -1,0 +1,30 @@
+{
+  "realm": "cloud",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "cloud",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "kc-client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8090/api/v1/auth/oidc/kc/callback",
+        "http://localhost:5173/api/v1/auth/oidc/kc/callback"
+      ],
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    }
+  ],
+  "users": [
+    {
+      "username": "ivan",
+      "enabled": true,
+      "email": "ivan@example.com",
+      "emailVerified": true,
+      "firstName": "Ivan",
+      "lastName": "Petrov",
+      "credentials": [{ "type": "password", "value": "ivanpass", "temporary": false }]
+    }
+  ]
+}

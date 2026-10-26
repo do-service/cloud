@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    // The web code under @web imports its packages by bare name, which
+    // would otherwise resolve from frontend/node_modules: absent in a
+    // desktop-only checkout or CI job, and a second copy of the types
+    // when present. Every package it uses is pinned to ours here, as
+    // vite.config.ts's resolve.dedupe does for the bundle.
+    "paths": {
+      "@web/*": ["../../frontend/src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"],
+      "@mantine/*": ["./node_modules/@mantine/*"],
+      "@tanstack/*": ["./node_modules/@tanstack/*"],
+      "@tabler/icons-react": ["./node_modules/@tabler/icons-react"]
+    }
+  },
+  "include": ["src"]
+}

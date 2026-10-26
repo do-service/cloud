@@ -1,0 +1,60 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! For a security vulnerability, please don't open an issue: see [SECURITY.md](https://github.com/do-service/cloud/blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a folder with ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - Web UI
+        - Server / REST API
+        - WebDAV
+        - Online editor (OnlyOffice / Collabora)
+        - Sign-in / OIDC
+        - Desktop client
+        - Docker / deployment
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit, image tag, or the version shown in the admin area.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: How it's deployed (compose, reverse proxy), OS and browser, WebDAV client, editor.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output of `docker compose logs cloud` or the browser console. Remove secrets, tokens and personal data.
+      render: text
