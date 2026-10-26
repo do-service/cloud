@@ -466,3 +466,42 @@ func TestSharedTrashedByOwner(t *testing.T) {
 	w.expect()
 	w.converged()
 }
+
+// A folder and its own subfolder swapped on disk where the server's
+// position wins: «Доступно мне» and a share in it (pinned), or two
+// folders of a read-only share. Each one's place is inside the other, so
+// neither can go back first. On ext4 a deleted folder's inode reused by
+// a new one looks the same (found by TestSyncProperty).
+func TestSharedSwappedWithParent(t *testing.T) {
+	for _, tc := range []struct {
+		name, parent, child string
+		perms               []string
+	}{
+		{"pinned", SharedName, proj, []string{"read", "write"}},
+		{"read-only", proj, proj + "/sub", []string{"read"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newShareWorld(t)
+			w.s.share(w.project(), tc.perms...)
+			w.h.selectAll()
+			w.selectPath("/" + proj)
+			w.h.sync()
+			w.expect("Проект")
+
+			abs := func(rel string) string { return filepath.Join(w.h.root, filepath.FromSlash(rel)) }
+			tmp := abs("tmp")
+			for _, mv := range [][2]string{
+				{abs(tc.parent), tmp},
+				{filepath.Join(tmp, nameOf(tc.child)), abs(tc.parent)},
+				{tmp, abs(tc.child)},
+			} {
+				if err := os.Rename(mv[0], mv[1]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w.h.sync()
+			w.expect("Проект")
+			w.converged()
+		})
+	}
+}

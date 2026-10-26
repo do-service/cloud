@@ -74,17 +74,42 @@ func (p *planner) moveLocal(b *state.Base, r *state.Remote, l *state.Local) {
 		return
 	}
 	target := join(td, r.Name)
-	if p.inMoved(target) || below(nfc(target), nfc(l.RelPath)) || p.occupiedLocal(td, r.Name, l) {
-		// What's there moves away or aside in this pass.
+	if p.inMoved(target) || below(nfc(target), nfc(l.RelPath)) {
 		p.deferOne()
 		return
 	}
+	if p.occupiedLocal(td, r.Name, l) {
+		if !p.inOccupant(td, r.Name, l) {
+			// What's there moves away or aside in this pass.
+			p.deferOne()
+			return
+		}
+		// The name is held by a folder this one is in: it can't go
+		// there before leaving it. When that folder's own place is in
+		// turn inside this one (a folder swapped with its parent on
+		// disk, or so it looks on ext4 when a new folder gets a deleted
+		// one's inode), neither could ever go back first. This one steps
+		// out next to it under a free name; later passes put both where
+		// the server has them.
+		target = join(td, p.freeName(td, r.Name, r.ParentID))
+	}
 	dir := b.Kind == state.KindDir
 	p.add(Op{Kind: OpRenameLocal, NodeID: b.NodeID, From: l.RelPath, Path: target, BasePath: b.RelPath, Dir: dir})
-	p.take(td, r.Name)
+	p.take(td, nameOf(target))
 	if dir {
 		p.markMoved(l.RelPath, target, b.RelPath)
 	}
+}
+
+// inOccupant: what takes name in local folder dir is a folder self is
+// inside of.
+func (p *planner) inOccupant(dir, name string, self *state.Local) bool {
+	for _, o := range p.localKids[nfc(dir)][localfs.NameKey(name)] {
+		if o != self && below(nfc(self.RelPath), nfc(o.RelPath)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *planner) moveRemote(b *state.Base, r *state.Remote, l *state.Local, lp string, lok bool, ln string) {
