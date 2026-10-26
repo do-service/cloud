@@ -14,7 +14,7 @@ import (
 // Handler is the window's own API under /app/v1, next to the /api proxy
 // in the app's asset handler. The window calls it with fetch like the
 // server's API, rather than through Wails' generated bindings: no
-// wails3 code generation or JS runtime to keep in step with a beta, the
+// wails3 code generation or JS runtime to keep in step with Wails, the
 // same {"code","message"} errors as the server, and tests without cgo.
 // It is served only to the app's own WebView (the asset handler is no
 // network listener).

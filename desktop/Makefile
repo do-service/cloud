@@ -113,8 +113,11 @@ LINUX_APP_ID = com.do-service.cloud
 APPIMAGE = bin/Cloud-$(VERSION)-linux-$(LINUX_ARCH).AppImage
 NFPM = go run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
 # The same Wails as the app's: its `generate appimage` bundles WebKitGTK
-# (helper processes included) with linuxdeploy's GTK plugin.
-WAILS3 = go run github.com/wailsapp/wails/v3/cmd/wails3@$(shell go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+# (helper processes included) with linuxdeploy's GTK plugin. A tool of
+# go.mod, not `go run …@version`: that also asks the proxy for the latest
+# version (deprecation check) and fails when the checksum DB doesn't know
+# it yet.
+WAILS3 = go tool wails3
 # A pinned linuxdeploy, put where Wails looks before downloading its
 # "continuous" build.
 LINUXDEPLOY_VERSION = 1-alpha-20251107-1

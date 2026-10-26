@@ -159,7 +159,7 @@ func main() {
 	tray.SetMenu(t.build(nil))
 
 	// Only once the app runs: menus touched from goroutines before that
-	// dereference the not yet created platform app (v3.0.0-beta.34).
+	// dereference the not yet created platform app (Wails v3.0.0).
 	a.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { go t.follow() })
 
 	if err := a.Run(); err != nil {

@@ -35,7 +35,7 @@ make lint test                   # gofmt, go vet (в т. ч. с CGO_ENABLED=0), 
 
 Окно:
 
-- API окна — `/app/v1/*` (`internal/app/handler.go`) в том же `AssetOptions.Handler`, что и ассеты, обычным `fetch` (`frontend/src/appApi.ts`), а не генерируемые биндинги Wails: без `wails3 generate` и JS-рантайма беты, ошибки `{"code","message"}` как у сервера, тесты без cgo.
+- API окна — `/app/v1/*` (`internal/app/handler.go`) в том же `AssetOptions.Handler`, что и ассеты, обычным `fetch` (`frontend/src/appApi.ts`), а не генерируемые биндинги Wails: без `wails3 generate` и JS-рантайма Wails, ошибки `{"code","message"}` как у сервера, тесты без cgo.
 - `/api/*` проксируется на сервер **показанного** подключения (`PUT /app/v1/active`) с `Authorization: Bearer <токен устройства>`; токен в WebView не попадает, cookie и `Set-Cookie` вырезаются. Кэш запросов обзора — свой на подключение (ключи веб-кода не содержат сервер).
 - Движок каждого подключения работает в процессе приложения под блокировкой `<state>/<id>/lock` (flock / LockFileEx, `state.LockConnection`); второй экземпляр приложения или `cloudsync sync/select/unselect/selection` на том же подключении получает отказ («открыто в другом процессе»), `pause`/`resume`/`status` работают — это флаг в `state.db`.
 - Галочки и статусы — `engine.Marks`/`Usage` (`internal/engine/browse.go`) по зеркалу, правилам, base, `ops` и проблемам; `SelectNode`/`UnselectNode` вызываются параллельно с `Run` (после `Prepare`), `Wake` запускает проход сразу.
@@ -110,12 +110,9 @@ make windows VERSION=1.2.3
 
 ## Wails
 
-Закреплён **`github.com/wailsapp/wails/v3 v3.0.0-beta.34`** (тег от 2026-10-20, последний на 2026-10-25). Причины:
+Закреплён **`github.com/wailsapp/wails/v3 v3.0.0`** (первый стабильный релиз, 2026-10-26; до него — `v3.0.0-beta.34`). Трей есть только в v3. Дальше Wails выпускает минорные версии еженедельно (`v3.1.0`, …), поэтому версия — точная, обновлять осознанно, с ручной проверкой окна и трея на macOS. JS-рантайм `@wailsio/runtime` не используется (см. API окна выше), так что держать его версию в ногу с модулем не нужно.
 
-- трей есть только в v3 (в v2 его нет), а v3 пока только в бете;
-- беты выходят почти каждый день (beta.31–34 за три дня) и ломают API без предупреждения, поэтому версия — точная, обновлять осознанно, с ручной проверкой окна и трея на macOS.
-
-CLI `wails3` не нужен: сборка — обычный `go build` (`-tags production` — ассеты только из бинарника, без dev-сервера), `.app` и DMG — `make app`/`make dmg` (lipo, codesign, hdiutil), по образцу его Taskfile для darwin. Если понадобится для установщиков Windows/Linux (E15-2, E15-3) — ставить той же версией: `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34`.
+Приложение собирается обычным `go build` (`-tags production` — ассеты только из бинарника, без dev-сервера), `.app` и DMG — `make app`/`make dmg` (lipo, codesign, hdiutil), по образцу его Taskfile для darwin. CLI `wails3` нужен только для AppImage (`make linux`): он — инструмент модуля (директива `tool` в `go.mod`), запускается как `go tool wails3` той же версией, что и библиотека, по `go.mod`/`go.sum`. Не `go run …/cmd/wails3@<версия>`: так Go ещё и спрашивает у прокси последнюю версию модуля (проверка deprecation), и сразу после нового тега сборка падала на 404 от checksum DB. Зависимости CLI в `go.mod` (`// indirect`) в бинарники приложения не попадают. Обновление: `go get github.com/wailsapp/wails/v3@vX && go get -tool github.com/wailsapp/wails/v3/cmd/wails3@vX && go mod tidy`.
 
 Что выяснилось в спайке:
 
