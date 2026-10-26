@@ -16,34 +16,105 @@ small servers and on folders with tens of thousands of files.
 
 ## Features
 
-- **Files and folders** in the browser: a virtualized list that stays
-  responsive on 50 000-item folders, sorting, multi-select, create, rename,
-  move, copy, delete to trash with undo, search by name, download of files and
-  whole folders as ZIP, previews and thumbnails (via `vips`: images incl. HEIC,
-  PDF).
-- **Resumable uploads** over [tus](https://tus.io/), including whole folders
-  with their structure; big uploads survive dropped connections and server
-  restarts.
-- **Versions** of every file with restore, and a **trash** with restore and
-  retention (`TRASH_RETENTION`, `VERSIONS_MAX_COUNT`, `VERSIONS_MAX_AGE`).
-- **Sharing** with users and groups (read-only or with write rights), and
-  **public links** with an optional password, an expiry date and a
-  view / download / upload-only mode.
-- **WebDAV** at `/remote.php/dav/files/<user>/` (and `/dav/files/<user>/`)
-  with app passwords, checked against litmus and rclone in CI; works with
-  existing WebDAV clients ([docs/webdav-clients.md](docs/webdav-clients.md)).
+### Files in the browser
+
+- **File manager**: a virtualized list that stays responsive on 50 000-item
+  folders, sorting kept in the URL, multi-select with keyboard shortcuts,
+  new folder, rename (F2), move and copy through a folder picker, delete to
+  trash with undo, search by name.
+- **Live updates**: changes made elsewhere — another tab, WebDAV, the desktop
+  client, a colleague in a shared folder — show up without a page reload.
+- **Previews**: thumbnails in the list and a full-screen viewer for images
+  (HEIC included) and PDF, rendered by `vips` on first request.
+- **Uploads** over [tus](https://tus.io/): resumable, three files at a time,
+  whole folders with their structure, a progress panel; big uploads survive
+  dropped connections and server restarts.
+- **Downloads** of files (with HTTP Range) and of whole folders as ZIP.
+- **Versions** of every file with download and restore, and a **trash** with
+  restore and automatic cleanup (`TRASH_RETENTION`, `VERSIONS_MAX_COUNT`,
+  `VERSIONS_MAX_AGE`). Quotas per user.
+
+### Sharing
+
+- With **users and groups**, read-only or with write rights; what others
+  shared with you is under «Доступно мне» (Shared with me).
+- **Public links** with an optional password, an expiry date and a
+  view / download / upload-only mode, opened on a page that needs no account.
+- A single access check (`internal/access`) behind the web API, WebDAV, the
+  editors and sync, covered by a generated
+  [security matrix](docs/security-matrix.md).
+
+### Office documents
+
 - **Online editing** of docx/xlsx/pptx/odt through WOPI: OnlyOffice Docs by
-  default, Collabora Online as an option. Saves become new versions.
+  default, Collabora Online as an option. Saves become new versions; WOPI
+  locks and proof keys are checked.
+- **New document** from the UI: an empty document, spreadsheet or
+  presentation, opened in the editor.
+
+### Sync
+
+Three ways to keep files on a computer in step with the cloud:
+
+- **Desktop client** (`desktop/`, Go + Wails v3):
+  a window and a tray icon.
+  - **Sign-in in the browser**, on the cloud's own page (password, OIDC — the
+    same as on the web), with PKCE over loopback; the app never sees the
+    password and gets a device token that can be revoked from the settings.
+  - **Selective sync**: browse the cloud with thumbnails and tick the files
+    and folders you want on this computer — nothing is downloaded until you
+    choose. A ticked folder brings everything below it, including what is
+    added later.
+  - **Two-way, near real time**: the server keeps a change journal per user,
+    the client long-polls it (a change on the server reaches the client in
+    under 2 s) and watches the local folder (FSEvents on macOS).
+  - **Safe by design**: a three-way comparison (last synced state, local,
+    remote) with conditional writes (`If-Match`), so nothing is silently
+    overwritten. When both sides change a file, the server version keeps its
+    name and the local one is saved and uploaded as
+    `Name (конфликт, Device, date).ext`. Deletes go to the cloud trash.
+    Mass deletes (over 500 files or 30 % of what is synced) pause and ask.
+  - **Robust transfers**: resumable uploads and downloads that survive a
+    restart, downloads verified by sha256 and written to a temporary file
+    first, an operation journal that survives `kill -9`, offline mode with
+    back-off, pause, bandwidth limit.
+  - **Shared folders** under «Доступно мне», read-only ones stay read-only.
+  - **Several clouds and accounts** at once, each with its own folder.
+  - Builds: macOS (universal DMG) today; Windows and Linux builds are in
+    progress. See [desktop/README.md](desktop/README.md).
+- **Folder sync in the browser**: in Chrome or Edge on a computer, pick a
+  local folder and the cloud folders to keep there; a button runs a two-way
+  sync with conflict copies and a confirmation for deletes (File System
+  Access API, no install needed; runs while the tab is open).
+- **WebDAV** at `/remote.php/dav/files/<user>/` (and `/dav/files/<user>/`)
+  with app passwords and locks, checked against litmus and rclone in CI;
+  meant for Finder, Windows Explorer, GNOME Files, davfs2 and mobile WebDAV
+  apps (manual checklist: [docs/webdav-clients.md](docs/webdav-clients.md)).
+
+### Accounts and administration
+
 - **Sign-in** with local accounts and any number of OIDC providers (PKCE,
-  just-in-time accounts), sessions with CSRF protection.
-- **Administration** in the web UI: users, quotas, groups, an audit log and
-  system status.
-- **Files stay readable**: on the local file system the current versions are
-  kept as a plain directory tree that mirrors the folders, so data is
+  just-in-time accounts), sessions with CSRF protection, app passwords for
+  WebDAV, signed-in devices with revoke.
+- **Admin UI**: users (create, block, quota, delete), groups, an audit log
+  of who did what, system status.
+- **Security headers**: a strict Content Security Policy, real client IPs
+  behind trusted proxies (`TRUSTED_PROXIES`), rate-limited sign-in.
+
+### Operations
+
+- **One container** next to PostgreSQL: the SPA is embedded into the Go
+  binary; images for `linux/amd64` and `linux/arm64` on
+  `ghcr.io/do-service/cloud`.
+- **Files stay readable**: on the local file system the current versions
+  are kept as a plain directory tree that mirrors the folders, so data is
   accessible without the app.
-- **Desktop sync client** (`desktop/`, Go + Wails v3, macOS first): select
-  files and folders to keep in sync both ways, several clouds and accounts
-  at once. Early stage, see [desktop/README.md](desktop/README.md).
+- **Background jobs** (cleanup of uploads, trash, versions, the sync
+  journal) in the same binary or in separate workers (`ROLE=api|worker`).
+- **Prometheus metrics** on an internal port, health checks
+  (`/readyz`).
+- **Benchmarked** at 20 million nodes and 2 000 users (`bench/`); a smaller
+  listing benchmark runs in CI.
 
 ## Quick start
 
