@@ -167,10 +167,10 @@ frontend:test:
     - npm run test
 
 # Desktop client (desktop/, docs/desktop-client.md). Linux, CGO_ENABLED=0:
-# only the packages that don't import Wails (gtk and webkit need cgo), so
-# the engine's code is checked here and the app itself is built on a
-# developer's machine until the per-OS builds (E15). The FSEvents watcher
-# is excluded by its build tag; make test runs it on a Mac.
+# only the packages that don't import Wails' application (gtk and webkit
+# need cgo; its updater is plain Go), so the engine's code is checked here
+# and the app itself is built by .github/workflows/desktop.yml. The
+# FSEvents watcher is excluded by its build tag; make test runs it on a Mac.
 .desktop-go:
   extends: .go
   variables:
@@ -182,7 +182,7 @@ frontend:test:
       - .cache/go-mod
   before_script:
     - cd desktop
-    - PKGS=$(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+    - PKGS=$(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp/wails/v3/pkg/application | cut -d' ' -f1)
 
 desktop:lint:
   extends: .desktop-go

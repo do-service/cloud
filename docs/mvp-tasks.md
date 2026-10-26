@@ -180,7 +180,7 @@ ID задачи → требование из PRD в скобках. «Зави�
 | E14-2 ✅ | M1. Обзор облака: слот в `FileList`, галочки в трёх состояниях, статусы, миниатюры, итог по месту | L | E14-1, E13-8 |
 | E14-3 ✅ | M1. Трей: значки состояний, меню | S | E13-1 |
 | E14-4 | «Активность», «Проблемы и конфликты» | M | E14-1, E13-7 |
-| E14-5 | Настройки: папка, автозапуск, скорость, аккаунт, логи | M | E14-1 |
+| E14-5 | Настройки: папка, автозапуск, скорость, аккаунт, логи. *Есть окно «Настройки» (`settings.json`) с разделом «Обновления»; остальное — сюда* | M | E14-1 |
 
 ### E15. Сборка и выпуск клиента
 | ID | Задача | Размер | Зависит |
@@ -188,7 +188,7 @@ ID задачи → требование из PRD в скобках. «Зави�
 | E15-1 ✅ | macOS: universal `.app`, DMG, job на mac-раннере; подпись и нотаризация — когда будет Apple Developer ID. *`make app`/`make dmg` в `desktop/`, ad-hoc подпись; `.github/workflows/desktop.yml` (macos-15, на тег `v*` — в релиз GitHub)* | M | E13-1 |
 | E15-2 ✅ | Windows: CGO=0, NSIS, WebView2, рекурсивный ReadDirectoryChangesW для `watch` (fsnotify держит дескриптор на каждую папку и мешает переименованиям); подпись позже. *`make windows` в `desktop/`: amd64 + arm64, NSIS (для пользователя, загрузчик WebView2 из модуля Wails) и zip; ресурсы — go-winres; вотчер — `watch/rdcw.go`; job `windows` (windows-2025) с тихой установкой и запуском* | M | E13-1 |
 | E15-3 ✅ | Linux: AppImage, deb/rpm, зависимости. *`make linux` в `desktop/`: AppImage (`wails3 generate appimage`, linuxdeploy закреплён), .deb и .rpm (nfpm, `build/linux/nfpm.yaml`); GTK 4.14+ и WebKitGTK 6.0 — Ubuntu 24.04+, Debian 13+, Fedora 40+; job `linux` в `desktop.yml` (amd64 и arm64)* | M | E13-1 |
-| E15-4 | `minClientVersion` и уведомление об обновлении | S | E11-2 |
+| E15-4 ✅ | `minClientVersion` и уведомление об обновлении. *`/sync/info` перед движком и раз в час → статус `too_old` (`internal/app`); самообновление — `internal/update` (`pkg/updater` Wails, манифест `update.json` в релизе, ed25519ph, `cmd/signupdate` в `desktop.yml`, секрет `UPDATE_SIGNING_KEY`), три режима в «Настройках», пункты трея «Настройки…» и «Проверить обновления»* | S | E11-2 |
 | E15-5 | e2e на macOS + чек-лист `docs/desktop-clients.md` | M | M1 |
 
 **Критический путь фазы 2:** E11-1 → E11-2 → E13-2 → E13-6 → E13-7 → E14-2. Сервер (E11, E12) и `localfs`/`state` (E13-4, E13-5) — параллельно. Дальше (не планируется): заглушки в Finder/Проводнике поверх `Materializer`.

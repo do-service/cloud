@@ -24,6 +24,9 @@ const (
 	StatusBusy Status = "busy"
 	// StatusMoving: its sync folder is being moved (Manager.MoveFolder).
 	StatusMoving Status = "moving"
+	// StatusTooOld: the server needs a newer client (ConnInfo.MinVersion);
+	// nothing syncs until the app is updated.
+	StatusTooOld Status = "too_old"
 )
 
 // ConnInfo is a connection in the window's list.
@@ -38,6 +41,8 @@ type ConnInfo struct {
 	// Pending ops in the journal and Problems recorded (E14-4 lists them).
 	Pending  int `json:"pending"`
 	Problems int `json:"problems"`
+	// MinVersion is the client version the server needs (StatusTooOld).
+	MinVersion string `json:"minVersion,omitempty"`
 }
 
 // informational problems: listed (E14-4), but nothing is wrong with sync.
@@ -52,6 +57,25 @@ func (m *Manager) Connections(ctx context.Context) []ConnInfo {
 		out = append(out, r.info(ctx))
 	}
 	return out
+}
+
+// ViewSettings asks the window to show «Настройки» (the tray's item).
+const ViewSettings = "settings"
+
+// RequestView asks the window to show view: the next
+// GET /app/v1/connections carries it once.
+func (m *Manager) RequestView(view string) {
+	m.mu.Lock()
+	m.view = view
+	m.mu.Unlock()
+}
+
+func (m *Manager) takeView() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v := m.view
+	m.view = ""
+	return v
 }
 
 // Active is the connection the window shows, "" with none.
@@ -85,6 +109,9 @@ func (r *runner) info(ctx context.Context) ConnInfo {
 		return ci
 	case phaseMoving:
 		ci.Status = StatusMoving
+		return ci
+	case phaseTooOld:
+		ci.Status, ci.MinVersion = StatusTooOld, r.minVersion
 		return ci
 	}
 	if r.sess == nil {
@@ -147,7 +174,7 @@ func Overall(conns []ConnInfo) Status {
 	}
 	rank := func(s Status) int {
 		switch s {
-		case StatusError, StatusNeedSignIn, StatusNoFolder:
+		case StatusError, StatusNeedSignIn, StatusNoFolder, StatusTooOld:
 			return 5
 		case StatusOffline:
 			return 4
@@ -165,7 +192,7 @@ func Overall(conns []ConnInfo) Status {
 		}
 	}
 	switch worst {
-	case StatusNeedSignIn, StatusNoFolder:
+	case StatusNeedSignIn, StatusNoFolder, StatusTooOld:
 		return StatusError
 	case StatusStarting, StatusMoving:
 		return StatusSyncing

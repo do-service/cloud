@@ -21,7 +21,12 @@ import (
 func (m *Manager) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /app/v1/connections", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"items": m.Connections(r.Context()), "active": m.Active()})
+		resp := map[string]any{"items": m.Connections(r.Context()), "active": m.Active()}
+		// The window polls this, so it carries the tray's requests too.
+		if v := m.takeView(); v != "" {
+			resp["view"] = v
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 	mux.HandleFunc("PUT /app/v1/active", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

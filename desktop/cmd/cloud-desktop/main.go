@@ -14,6 +14,10 @@
 //	                           the security tool resolves past $HOME
 //	CLOUD_PICK_FOLDER=PATH     the folder dialog answers PATH at once, for
 //	                           checks that can't click a native dialog
+//
+// Built with -tags updatetest, it also takes CLOUD_UPDATE_MANIFEST and
+// CLOUD_UPDATE_PUBLIC_KEY: a fake release to update from
+// (internal/update/source_updatetest.go).
 package main
 
 import (
@@ -26,16 +30,19 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"slices"
-	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/updater"
 
+	"github.com/do-service/cloud/desktop/internal/api"
 	"github.com/do-service/cloud/desktop/internal/app"
 	"github.com/do-service/cloud/desktop/internal/signin"
 	"github.com/do-service/cloud/desktop/internal/state"
+	"github.com/do-service/cloud/desktop/internal/update"
 )
 
 // dist is filled by `make build`, which copies desktop/frontend's build
@@ -46,29 +53,19 @@ import (
 //go:embed all:dist
 var dist embed.FS
 
-// The tray's strings: Go has no access to the web dictionary, and these
-// are the only native ones.
+// The native strings are in internal/app (traymenu.go), with the menu.
 const (
-	labelTitle      = "Облако"
-	labelOpenWindow = "Открыть окно"
-	labelOpenFolder = "Открыть папку"
-	labelPause      = "Приостановить синхронизацию"
-	labelResume     = "Продолжить синхронизацию"
-	labelQuit       = "Выход"
-	labelNoConns    = "Нет подключённых облаков"
-	labelPickFolder = "Папка для синхронизации"
-	labelPickButton = "Выбрать"
+	labelTitle      = app.LabelTitle
+	labelPickFolder = app.LabelPickFolder
+	labelPickButton = app.LabelPickButton
 )
 
-var statusLabels = map[app.Status]string{
-	app.StatusSynced:  "Всё синхронизировано",
-	app.StatusSyncing: "Идёт синхронизация…",
-	app.StatusPaused:  "Синхронизация на паузе",
-	app.StatusOffline: "Нет связи с сервером",
-	app.StatusError:   "Есть проблемы с синхронизацией",
-}
-
 func main() {
+	// Before anything takes the connections' locks: started as the
+	// updater's swap helper, this process swaps the app and exits here.
+	// application.New would do it too, but only after the Manager.
+	updater.HandleHelperMode()
+
 	base, err := state.BaseDir()
 	if err != nil {
 		log.Fatal(err)
@@ -127,6 +124,10 @@ func main() {
 		},
 	})
 
+	upd := newUpdates(a, base, openBrowser)
+	mux.Handle("/app/v1/updates", upd.Handler())
+	mux.Handle("/app/v1/updates/", upd.Handler())
+
 	window := a.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:   "main",
 		Title:  labelTitle,
@@ -155,25 +156,36 @@ func main() {
 	tray := a.SystemTray.New()
 	tray.SetTemplateIcon(app.TrayIcon(app.StatusSynced))
 	tray.SetTooltip(labelTitle)
-	t := &trayMenu{a: a, tray: tray, m: m, show: show}
-	tray.SetMenu(t.build(nil))
+	t := &trayMenu{a: a, tray: tray, m: m, upd: upd, show: show}
+	tray.SetMenu(t.build(app.TrayMenu(nil, upd.Status(), false)))
 
 	// Only once the app runs: menus touched from goroutines before that
-	// dereference the not yet created platform app (Wails v3.0.0).
-	a.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { go t.follow() })
+	// dereference the not yet created platform app (Wails v3.0.0); the
+	// updater's events go to the windows as well.
+	a.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		go t.follow()
+		go upd.Run(a.Context())
+	})
 
 	if err := a.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// trayMenu keeps the tray's icon and menu in step with the connections.
+// trayMenu keeps the tray's icon and menu (app.TrayMenu) in step with
+// the connections and updates.
 type trayMenu struct {
 	a    *application.App
 	tray *application.SystemTray
 	m    *app.Manager
+	upd  *update.Controller
 	show func()
-	// key is what the menu was last built from; the icon's state too.
+	// checked: the user asked the tray for a check, so the menu shows its
+	// result.
+	checked atomic.Bool
+	// mu: the ticker and a check's end both refresh. key is what the menu
+	// was last built from; the icon's state too.
+	mu   sync.Mutex
 	key  string
 	icon app.Status
 }
@@ -182,71 +194,118 @@ func (t *trayMenu) follow() {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for range tick.C {
-		conns := t.m.Connections(t.a.Context())
-		st := app.Overall(conns)
-		if st != t.icon {
-			t.icon = st
-			t.tray.SetTemplateIcon(app.TrayIcon(st))
-		}
-		var key strings.Builder
-		key.WriteString(string(st))
-		for _, c := range conns {
-			fmt.Fprintf(&key, "|%s:%s", c.ID, c.Status)
-		}
-		if key.String() != t.key {
-			t.key = key.String()
-			t.tray.SetMenu(t.build(conns))
-		}
+		t.refresh()
 	}
 }
 
-// build makes the menu: the state, open the window, open a folder (one
-// per connection when there are several), pause or resume all, quit.
-func (t *trayMenu) build(conns []app.ConnInfo) *application.Menu {
+func (t *trayMenu) refresh() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	conns := t.m.Connections(t.a.Context())
+	st := app.Overall(conns)
+	if st != t.icon {
+		t.icon = st
+		t.tray.SetTemplateIcon(app.TrayIcon(st))
+	}
+	items := app.TrayMenu(conns, t.upd.Status(), t.checked.Load())
+	if key := app.TrayKey(items); key != t.key {
+		t.key = key
+		t.tray.SetMenu(t.build(items))
+	}
+}
+
+func (t *trayMenu) build(items []app.TrayItem) *application.Menu {
 	menu := t.a.NewMenu()
-	label := labelNoConns
-	if len(conns) > 0 {
-		label = statusLabels[app.Overall(conns)]
-	}
-	menu.Add(label).SetEnabled(false)
-	menu.AddSeparator()
-	menu.Add(labelOpenWindow).OnClick(func(*application.Context) { t.show() })
-	switch len(conns) {
-	case 0:
-	case 1:
-		id := conns[0].ID
-		menu.Add(labelOpenFolder).OnClick(func(*application.Context) { t.openFolder(id) })
-	default:
-		sub := menu.AddSubmenu(labelOpenFolder)
-		for _, c := range conns {
-			sub.Add(c.User + "@" + c.Host).OnClick(func(*application.Context) { t.openFolder(c.ID) })
-		}
-	}
-	if len(conns) > 0 {
-		allPaused := !slices.ContainsFunc(conns, func(c app.ConnInfo) bool { return c.Status != app.StatusPaused })
-		if allPaused {
-			menu.Add(labelResume).OnClick(func(*application.Context) { t.setPaused(false) })
-		} else {
-			menu.Add(labelPause).OnClick(func(*application.Context) { t.setPaused(true) })
-		}
-	}
-	menu.AddSeparator()
-	menu.Add(labelQuit).OnClick(func(*application.Context) { t.a.Quit() })
+	t.add(menu, items)
 	return menu
 }
 
-func (t *trayMenu) openFolder(id string) {
-	if err := t.m.OpenFolder(id); err != nil {
-		slog.Warn("cloud-desktop: open the folder", "err", err)
+func (t *trayMenu) add(menu *application.Menu, items []app.TrayItem) {
+	for _, it := range items {
+		switch {
+		case it.Separator:
+			menu.AddSeparator()
+		case it.Sub != nil:
+			t.add(menu.AddSubmenu(it.Label), it.Sub)
+		default:
+			item := menu.Add(it.Label)
+			if it.Disabled || it.Action == app.TrayNone {
+				item.SetEnabled(false)
+				continue
+			}
+			item.OnClick(func(*application.Context) { t.do(it) })
+		}
 	}
 }
 
-func (t *trayMenu) setPaused(p bool) {
-	go func() {
-		if err := t.m.SetPaused(t.a.Context(), "", p); err != nil {
-			slog.Warn("cloud-desktop: pause", "err", err)
+func (t *trayMenu) do(it app.TrayItem) {
+	switch it.Action {
+	case app.TrayShowUpdate, app.TrayOpenWindow:
+		t.show()
+	case app.TraySettings:
+		t.m.RequestView(app.ViewSettings)
+		t.show()
+	case app.TrayOpenFolder:
+		if err := t.m.OpenFolder(it.ConnID); err != nil {
+			slog.Warn("cloud-desktop: open the folder", "err", err)
 		}
-	}()
+	case app.TrayPause, app.TrayResume:
+		go func() {
+			if err := t.m.SetPaused(t.a.Context(), "", it.Action == app.TrayPause); err != nil {
+				slog.Warn("cloud-desktop: pause", "err", err)
+			}
+		}()
+	case app.TrayCheckUpdates:
+		t.checked.Store(true)
+		go func() {
+			if err := t.upd.CheckNow(t.a.Context()); err != nil {
+				slog.Warn("cloud-desktop: check for updates", "err", err)
+			}
+			t.refresh()
+			// A version found: the window's banner offers it.
+			if us := t.upd.Status(); us.Release != nil {
+				t.show()
+			}
+		}()
+	case app.TrayQuit:
+		t.a.Quit()
+	}
+}
+
+// newUpdates sets up Wails' updater with the release source and key, and
+// the controller that drives it by the user's mode. A development build
+// (update.IsRelease) doesn't check.
+func newUpdates(a *application.App, base string, openBrowser func(string) error) *update.Controller {
+	src := update.DefaultSource()
+	install, target := update.DetectInstall(update.OSEnv(runtime.GOOS))
+	enabled := update.IsRelease(api.Version)
+	prov, err := update.NewProvider(src)
+	if err == nil {
+		err = a.Updater.Init(updater.Config{
+			CurrentVersion: api.Version,
+			Providers:      []updater.Provider{prov},
+			// With a key, signatures are mandatory: a release without one
+			// is refused.
+			PublicKey: src.PublicKey,
+			// The app's own window shows updates, in Russian.
+			Window: updater.WindowNone,
+		})
+	}
+	if err != nil {
+		slog.Error("cloud-desktop: the updater", "err", err)
+		enabled = false
+	}
+	if install == update.InstallSelf {
+		update.SweepStaging(target, time.Now())
+	}
+	c := update.NewController(update.Options{Engine: a.Updater, Base: base, Version: api.Version, Enabled: enabled, Install: install, OpenBrowser: openBrowser})
+	a.Event.On(updater.EventDownloadProgress, func(e *application.CustomEvent) {
+		if p, ok := e.Data.(updater.Progress); ok {
+			c.SetProgress(p.Written, p.Total)
+		}
+	})
+	slog.Info("cloud-desktop: updates", "version", api.Version, "enabled", enabled, "install", install, "target", target, "mode", c.Status().Mode)
+	return c
 }
 
 // openFolder shows path in Finder (Explorer, the file manager).

@@ -1,8 +1,8 @@
 import { Alert, Badge, Box, Button, Center, Group, Menu, Modal, NavLink, ActionIcon, ScrollArea, Stack, Text, Title, Tooltip } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { IconDots, IconFolderOpen, IconFolderShare, IconPlayerPause, IconPlayerPlay, IconPlus, IconUnlink } from "@tabler/icons-react";
+import { IconDots, IconFolderOpen, IconFolderShare, IconPlayerPause, IconPlayerPlay, IconPlus, IconSettings, IconUnlink } from "@tabler/icons-react";
 import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@web/api";
 import { ErrorState, PageLoader } from "@web/components/States";
 import { t } from "@web/i18n";
@@ -12,18 +12,22 @@ import {
   adoptableQueryKey,
   adoptExisting,
   appErrorText,
+  checkUpdates,
   connectionsQueryKey,
   fetchAdoptable,
   fetchConnections,
+  fetchUpdates,
   openFolder,
   removeConnection,
   setActive,
   setPaused,
+  updatesQueryKey,
   type Connection,
   type Status,
 } from "./appApi";
 import Browser from "./Browser";
 import MoveFolder from "./MoveFolder";
+import { UpdateBanner, UpdateSettings } from "./Updates";
 
 const STATUS_COLOR: Record<Status, string> = {
   starting: "gray",
@@ -36,6 +40,7 @@ const STATUS_COLOR: Record<Status, string> = {
   no_folder: "red",
   busy: "yellow",
   moving: "blue",
+  too_old: "red",
 };
 
 function name(c: Connection): string {
@@ -47,7 +52,14 @@ function name(c: Connection): string {
 export default function App() {
   const queryClient = useQueryClient();
   const conns = useQuery({ queryKey: connectionsQueryKey, queryFn: fetchConnections, refetchInterval: 1500 });
+  const updates = useQuery({ queryKey: updatesQueryKey, queryFn: fetchUpdates, refetchInterval: 2000 });
   const [adding, setAdding] = useState(false);
+  const [settings, setSettings] = useState(false);
+  // The tray's «Настройки…»: the list's response carries it once.
+  const view = conns.data?.view;
+  useEffect(() => {
+    if (view === "settings") setSettings(true);
+  }, [view, conns.dataUpdatedAt]);
   // The connection shown is the app's (active): its /api goes there, so
   // it is switched in the app first and shown once the list says so.
   const show = useCallback(
@@ -92,30 +104,37 @@ export default function App() {
         <Button variant="light" leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>
           {t("desktop.addCloud")}
         </Button>
+        <Button variant="subtle" color="gray" leftSection={<IconSettings size={16} />} onClick={() => setSettings(true)}>
+          {t("desktop.settings")}
+        </Button>
       </Stack>
-      <Box flex={1} miw={0} p="md">
-        {current ? (
-          <ConnectionView key={current.id} conn={current} />
-        ) : (
-          <Center h="100%">
-            <Stack align="center" maw={420} gap="sm">
-              <Title order={3}>{t("desktop.empty.title")}</Title>
-              <Text c="dimmed" ta="center">
-                {t("desktop.empty.text")}
-              </Text>
-              <Button leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>
-                {t("desktop.addCloud")}
-              </Button>
-            </Stack>
-          </Center>
-        )}
-      </Box>
+      <Stack flex={1} miw={0} p="md" gap={0}>
+        {updates.data && <UpdateBanner updates={updates.data} />}
+        <Box flex={1} mih={0}>
+          {current ? (
+            <ConnectionView key={current.id} conn={current} />
+          ) : (
+            <Center h="100%">
+              <Stack align="center" maw={420} gap="sm">
+                <Title order={3}>{t("desktop.empty.title")}</Title>
+                <Text c="dimmed" ta="center">
+                  {t("desktop.empty.text")}
+                </Text>
+                <Button leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>
+                  {t("desktop.addCloud")}
+                </Button>
+              </Stack>
+            </Center>
+          )}
+        </Box>
+      </Stack>
       <AddCloud opened={adding} onClose={() => setAdding(false)} onAdded={added} />
+      <UpdateSettings updates={updates.data} opened={settings} onClose={() => setSettings(false)} />
     </Group>
   );
 }
 
-const HINTS = ["needs_signin", "no_folder", "busy"] as const;
+const HINTS = ["needs_signin", "no_folder", "busy", "too_old"] as const;
 
 // Below this window width the header's buttons lose their labels (kept in
 // tooltips), so the connection's name stays readable beside them.
@@ -137,6 +156,11 @@ function ConnectionView({ conn }: { conn: Connection }) {
     onSettled: refresh,
   });
   const hint = HINTS.find((h) => h === conn.status);
+  const check = useMutation({
+    mutationFn: checkUpdates,
+    onError: (err) => setError(appErrorText(err)),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: updatesQueryKey }),
+  });
   // Folders the sync folder held when connected and the cloud has too,
   // left unchecked: offered to check at once.
   const ready = conn.status !== "starting" && conn.status !== "moving" && conn.status !== "busy";
@@ -228,7 +252,15 @@ function ConnectionView({ conn }: { conn: Connection }) {
       </Group>
       {hint && (
         <Alert color={STATUS_COLOR[conn.status]} py="xs">
-          {t(`desktop.statusHint.${hint}`)}
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            <Text size="sm">{t(`desktop.statusHint.${hint}`, { version: conn.minVersion ?? "" })}</Text>
+            {/* What it finds shows in the update banner above. */}
+            {hint === "too_old" && (
+              <Button size="xs" variant="light" color="red" loading={check.isPending} onClick={() => check.mutate()} style={{ flexShrink: 0 }}>
+                {t("desktop.updates.checkNow")}
+              </Button>
+            )}
+          </Group>
         </Alert>
       )}
       {adoptCount > 0 && (

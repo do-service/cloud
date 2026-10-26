@@ -8,9 +8,10 @@ export CGO_CFLAGS = -mmacosx-version-min=13.0
 export CGO_LDFLAGS = -mmacosx-version-min=13.0
 endif
 
-# The packages that don't import Wails: they build and test with
-# CGO_ENABLED=0, which is how CI runs them (desktop:lint, desktop:test).
-CGO_FREE = $(shell go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+# The packages that don't import Wails' application (its updater is pure
+# Go): they build and test with CGO_ENABLED=0, which is how CI runs them
+# (desktop:lint, desktop:test).
+CGO_FREE = $(shell go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp/wails/v3/pkg/application | cut -d' ' -f1)
 
 fmt:
 	gofmt -w .
@@ -56,6 +57,10 @@ APP_NAME = Облако
 APP = bin/$(APP_NAME).app
 DMG = bin/Cloud-$(VERSION)-macos-universal.dmg
 RELEASE_LDFLAGS = -s -w -X github.com/do-service/cloud/desktop/internal/api.Version=$(VERSION)
+# The app's build tags. TAGS=production,updatetest makes a build that
+# updates from CLOUD_UPDATE_MANIFEST (a fake release, see README); never
+# for a release.
+TAGS = production
 
 # One binary per architecture, glued by lipo: cgo (Wails, FSEvents) can't
 # build both in one go. cloudsync rides along in Contents/MacOS, signed on
@@ -65,7 +70,7 @@ RELEASE_LDFLAGS = -s -w -X github.com/do-service/cloud/desktop/internal/api.Vers
 app: frontend
 	rm -rf "$(APP)" bin/darwin
 	for arch in arm64 amd64; do \
-		CGO_ENABLED=1 GOOS=darwin GOARCH=$$arch go build -tags production -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/darwin/$$arch/cloud-desktop ./cmd/cloud-desktop && \
+		CGO_ENABLED=1 GOOS=darwin GOARCH=$$arch go build -tags $(TAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/darwin/$$arch/cloud-desktop ./cmd/cloud-desktop && \
 		CGO_ENABLED=1 GOOS=darwin GOARCH=$$arch go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/darwin/$$arch/cloudsync ./cmd/cloudsync || exit 1; \
 	done
 	mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
@@ -92,6 +97,17 @@ dmg: app
 	done; test -n "$$ok"
 	rm -rf bin/dmg
 	cd bin && shasum -a 256 "$(notdir $(DMG))" > "$(notdir $(DMG)).sha256"
+
+# The self-update of the .app (internal/update): the bundle alone in a
+# tar.gz, which Wails' updater unpacks and renames over the installed one
+# (a tar keeps the modes and symlinks; no ._ AppleDouble files). Signed by
+# cmd/signupdate in the release job.
+.PHONY: mac-update
+MAC_UPDATE = bin/Cloud-$(VERSION)-macos-universal.app.tar.gz
+mac-update: app
+	rm -f "$(MAC_UPDATE)" "$(MAC_UPDATE).sha256"
+	cd bin && COPYFILE_DISABLE=1 tar --no-mac-metadata -czf "$(notdir $(MAC_UPDATE))" "$(APP_NAME).app"
+	cd bin && shasum -a 256 "$(notdir $(MAC_UPDATE))" > "$(notdir $(MAC_UPDATE)).sha256"
 
 # Regenerates build/darwin/icons.icns (committed) from icon.go.
 icon:
@@ -129,7 +145,7 @@ LINUXDEPLOY_SHA256_aarch64 = 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47
 # any distro.
 linux-bin: frontend
 	rm -rf bin/linux
-	CGO_ENABLED=1 go build -tags production -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/linux/cloud-desktop ./cmd/cloud-desktop
+	CGO_ENABLED=1 go build -tags $(TAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/linux/cloud-desktop ./cmd/cloud-desktop
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/linux/cloudsync ./cmd/cloudsync
 
 linux: linux-bin
@@ -159,7 +175,9 @@ icon-linux:
 
 # The Windows build (E15-2): for amd64 and arm64 each, an NSIS installer
 # (per user, no admin rights) and a portable zip, both with a .sha256:
-# bin/Cloud-$(VERSION)-windows-<arch>-setup.exe and …-windows-<arch>.zip.
+# bin/Cloud-$(VERSION)-windows-<arch>-setup.exe and …-windows-<arch>.zip;
+# and the self-update, …-windows-<arch>-update.zip: cloud-desktop.exe
+# alone, the one file Wails' updater replaces.
 # Wails needs no cgo on Windows, so this cross-builds from any OS; it
 # needs makensis (NSIS 3: brew install makensis, choco install nsis) and
 # zip or 7z. The icon, manifest and version go in through .syso files from
@@ -184,12 +202,13 @@ windows: frontend
 		--original-filename cloudsync.exe --product-version '$(VERSION)' --file-version '$(WIN_VERSION)'
 	for arch in amd64 arm64; do \
 		name=Cloud-$(VERSION)-windows-$$arch; \
-		GOOS=windows GOARCH=$$arch CGO_ENABLED=0 go build -tags production -trimpath -ldflags "$(RELEASE_LDFLAGS) -H windowsgui" -o bin/windows/$$arch/cloud-desktop.exe ./cmd/cloud-desktop && \
+		GOOS=windows GOARCH=$$arch CGO_ENABLED=0 go build -tags $(TAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS) -H windowsgui" -o bin/windows/$$arch/cloud-desktop.exe ./cmd/cloud-desktop && \
 		GOOS=windows GOARCH=$$arch CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/windows/$$arch/cloudsync.exe ./cmd/cloudsync && \
 		makensis -V2 -NOCD -INPUTCHARSET UTF8 -DARCH=$$arch -DVERSION='$(VERSION)' -DVI_VERSION='$(WIN_VERSION)' \
 			-DBIN='bin\windows' -DOUTFILE=bin/$$name-setup.exe \
 			build/windows/installer.nsi && \
-		(cd bin/windows/$$arch && $(ZIP) ../../$$name.zip cloud-desktop.exe cloudsync.exe) || exit 1; \
+		(cd bin/windows/$$arch && $(ZIP) ../../$$name.zip cloud-desktop.exe cloudsync.exe) && \
+		(cd bin/windows/$$arch && $(ZIP) ../../$$name-update.zip cloud-desktop.exe) || exit 1; \
 	done
 	rm -f cmd/*/rsrc_windows_*.syso
 	cd bin && for f in Cloud-$(VERSION)-windows-*.exe Cloud-$(VERSION)-windows-*.zip; do \

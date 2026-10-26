@@ -6,7 +6,19 @@ import { t } from "@web/i18n";
 // connections and their engines, next to the server's /api, which the app
 // proxies with the connection's device token.
 
-export const STATUSES = ["starting", "synced", "syncing", "paused", "offline", "error", "needs_signin", "no_folder", "busy", "moving"] as const;
+export const STATUSES = [
+  "starting",
+  "synced",
+  "syncing",
+  "paused",
+  "offline",
+  "error",
+  "needs_signin",
+  "no_folder",
+  "busy",
+  "moving",
+  "too_old",
+] as const;
 export type Status = (typeof STATUSES)[number];
 
 export type Connection = {
@@ -18,9 +30,12 @@ export type Connection = {
   status: Status;
   pending: number;
   problems: number;
+  // The client version the server needs (status too_old).
+  minVersion?: string;
 };
 
-export type Connections = { items: Connection[]; active: string };
+// view: what the tray asked the window to show, once ("settings").
+export type Connections = { items: Connection[]; active: string; view?: string };
 
 export const SIGNIN_ERRORS = [
   "invalid_server",
@@ -87,12 +102,13 @@ function isConnection(v: unknown): v is Connection {
     isString(v.folder) &&
     isStatus(v.status) &&
     isNumber(v.pending) &&
-    isNumber(v.problems)
+    isNumber(v.problems) &&
+    (v.minVersion === undefined || isString(v.minVersion))
   );
 }
 
 function isConnections(v: unknown): v is Connections {
-  return isRecord(v) && isArrayOf(v.items, isConnection) && isString(v.active);
+  return isRecord(v) && isArrayOf(v.items, isConnection) && isString(v.active) && (v.view === undefined || isString(v.view));
 }
 
 function isSignIn(v: unknown): v is SignIn {
@@ -265,6 +281,72 @@ export async function fetchUsage(connId: string): Promise<Usage> {
 
 export async function setChecked(connId: string, nodeId: string, on: boolean): Promise<void> {
   await call(on ? "PUT" : "DELETE", `${conn(connId)}/selection/${encodeURIComponent(nodeId)}`);
+}
+
+// Updates (desktop/internal/update): the mode, what the last check found
+// and where the download is.
+export const UPDATE_MODES = ["off", "notify", "auto"] as const;
+export type UpdateMode = (typeof UPDATE_MODES)[number];
+
+export const UPDATE_STATES = ["idle", "checking", "up_to_date", "available", "downloading", "ready", "installing", "error"] as const;
+export type UpdateState = (typeof UPDATE_STATES)[number];
+
+export type Updates = {
+  mode: UpdateMode;
+  version: string;
+  // False in a development build: no checks.
+  enabled: boolean;
+  // "manual": a package (.deb, .rpm) or a folder the app can't write — a
+  // link to the release instead of installing.
+  install: "self" | "manual";
+  state: UpdateState;
+  lastCheck?: string;
+  errorStage?: "check" | "download" | "install";
+  release?: { version: string; page: string };
+  progress?: { written: number; total: number };
+};
+
+function isUpdates(v: unknown): v is Updates {
+  return (
+    isRecord(v) &&
+    UPDATE_MODES.some((m) => m === v.mode) &&
+    isString(v.version) &&
+    typeof v.enabled === "boolean" &&
+    (v.install === "self" || v.install === "manual") &&
+    UPDATE_STATES.some((s) => s === v.state) &&
+    (v.lastCheck === undefined || isString(v.lastCheck)) &&
+    (v.errorStage === undefined || v.errorStage === "check" || v.errorStage === "download" || v.errorStage === "install") &&
+    (v.release === undefined || (isRecord(v.release) && isString(v.release.version) && isString(v.release.page))) &&
+    (v.progress === undefined || (isRecord(v.progress) && isNumber(v.progress.written) && isNumber(v.progress.total)))
+  );
+}
+
+export const updatesQueryKey = ["app", "updates"] as const;
+
+export async function fetchUpdates(): Promise<Updates> {
+  return expectShape(await call("GET", "/updates"), isUpdates, "GET /app/v1/updates");
+}
+
+export async function setUpdateMode(mode: UpdateMode): Promise<Updates> {
+  return expectShape(await call("PUT", "/updates/mode", { mode }), isUpdates, "PUT /app/v1/updates/mode");
+}
+
+export async function checkUpdates(): Promise<Updates> {
+  return expectShape(await call("POST", "/updates/check"), isUpdates, "POST /app/v1/updates/check");
+}
+
+export async function downloadUpdate(): Promise<void> {
+  await call("POST", "/updates/download");
+}
+
+// installUpdate restarts the app into the downloaded version: the window
+// goes away with it.
+export async function installUpdate(): Promise<void> {
+  await call("POST", "/updates/install");
+}
+
+export async function openReleasePage(): Promise<void> {
+  await call("POST", "/updates/release-page");
 }
 
 const APP_ERRORS = ["not_ready", "busy", "no_space", "not_found"] as const;

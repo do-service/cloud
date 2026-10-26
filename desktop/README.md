@@ -18,6 +18,8 @@ internal/connection/ подключение вне движка, общее дл
 internal/state/      реестр подключений (connections.json) и state.db подключения: SQLite (modernc), журнал ops
 internal/localfs/    скан, file id, имена (golden-векторы с сервером), игнор, атомарная запись, маркер .cloudsync
 internal/watch/      FSEvents (darwin && cgo), inotify (linux), ReadDirectoryChangesW (windows), на остальных — ErrUnsupported; Debounce → грязные пути
+internal/update/     обновления: режим, расписание проверок, /app/v1/updates, тип установки, манифест и подпись (pkg/updater Wails)
+cmd/signupdate/      подпись ассетов обновления и update.json в релизном job (ключ — из UPDATE_SIGNING_KEY)
 frontend/            Vite + React + Mantine, алиас @web → ../../frontend/src
 ```
 
@@ -53,6 +55,7 @@ cd desktop/frontend && npm ci && cd ..
 make app                         # bin/Облако.app: universal (arm64 + x86_64), внутри и cloudsync
 make dmg                         # bin/Cloud-<версия>-macos-universal.dmg (+ .sha256): приложение и ссылка на /Applications
 make dmg VERSION=1.2.3           # версия явно; по умолчанию — из последнего тега v* (git describe)
+make mac-update                  # bin/Cloud-<версия>-macos-universal.app.tar.gz (+ .sha256): .app для самообновления
 make icon                        # перерисовать build/darwin/icons.icns (build/darwin/icon.go → sips → iconutil)
 ```
 
@@ -97,7 +100,7 @@ make icon-linux                  # перерисовать build/linux/icons/*.
 
 ```sh
 cd desktop/frontend && npm ci && cd ..
-make windows                     # bin/Cloud-<версия>-windows-{amd64,arm64}-setup.exe и .zip (+ .sha256)
+make windows                     # bin/Cloud-<версия>-windows-{amd64,arm64}-setup.exe, .zip и -update.zip (+ .sha256)
 make windows VERSION=1.2.3
 ```
 
@@ -107,6 +110,22 @@ make windows VERSION=1.2.3
 - CI: job `windows` на `windows-2025` — `go test` пакетов без Wails (в т. ч. вотчер) и `make windows`, артефакт `desktop-windows`.
 
 Подписи Authenticode нет, поэтому SmartScreen при первом запуске установщика показывает «Windows защитила ваш компьютер»: «Подробнее» → «Выполнить в любом случае».
+
+## Обновления
+
+`internal/update` поверх `pkg/updater` Wails v3.0.0 (без окна Wails — своё окно и трей):
+
+- «Настройки» → «Обновления»: «Не проверять», «Сообщать о новой версии», «Скачивать автоматически, спрашивать перед установкой» (по умолчанию). Режим — ключ `updates` в `settings.json` каталога состояния (остальные ключи файла не трогаются). Там же версия, время и итог последней проверки, «Проверить сейчас».
+- Проверка при запуске и раз в 6 ч (часы сверяются раз в минуту — таймер не считает сон ноутбука); не удалась — повтор через 30 мин; при «Не проверять» — только по кнопке. Нашлась версия — пункт «Доступна версия X — установить…» в трее (открывает окно) и баннер в окне со ссылкой «Что нового» (страница релиза). В режиме «скачивать» загрузка и проверка подписи идут в фоне, затем баннер «Версия X загружена. Установить и перезапустить?»; без нажатия ничего не ставится. Установка — `Updater.Restart`: помощник (тот же бинарник, `updater.HandleHelperMode()` первым делом в `main`) ждёт выхода приложения, подменяет его, при неудаче откатывает и запускает новое.
+- Трей (меню — `app.TrayMenu`, без Wails, тест `traymenu_test.go`; строки — константы Go, у трея нет доступа к словарю веба): «Настройки…» — окно с открытыми настройками (запрос идёт с ответом `GET /app/v1/connections`, поле `view`), «Проверить обновления» — проверка при любом режиме, итог в меню: «Установлена последняя версия», «Не удалось проверить обновления» или пункт найденной версии (и окно с баннером).
+- Что подменяется (`update.DetectInstall`): macOS — весь `.app`; Windows — `cloud-desktop.exe` (установщик для пользователя или zip); Linux — файл `$APPIMAGE`. Пакеты .deb/.rpm (`/usr/bin`), папка без права записи, голый бинарник вне `.app` — `manual`: только сообщение и ссылка на релиз. Старые `wails-update-*` рядом с приложением (скачано, но не установлено) удаляются при запуске.
+- Источник — манифест `https://github.com/do-service/cloud/releases/latest/download/update.json` (последний не-пререлиз) через endpoint-провайдер Wails: GitHub-провайдер Wails подписи не читает (только checksums) и ходит в API с лимитом 60 запросов в час на IP. Ассеты обновления: `Cloud-<в>-macos-universal.app.tar.gz` (`make mac-update`), `Cloud-<в>-windows-<arch>-update.zip` (только `cloud-desktop.exe`, `make windows`), `Cloud-<в>-linux-<arch>.AppImage`.
+- Подпись обязательна: Ed25519ph над SHA-512 ассета (`ed25519ph` у Wails), открытый ключ `internal/update/update-public-key.pem` вшит (`go:embed`) и передан в `Config.PublicKey` — релиз без подписи или с чужой отвергается. Подписывает `cmd/signupdate` в job `release` (`desktop.yml`) ключом из секрета `UPDATE_SIGNING_KEY` (PEM PKCS#8), сверяя каждую подпись с вшитым ключом; без секрета (форк) манифеста в релизе нет, и клиенты его не видят. `update.json` загружается в релиз последним.
+- Сборки для разработки (`0.0.0-dev`, `x.y.z-N-g<хеш>` из `git describe` между тегами) не проверяют обновления: по semver они старше своего тега, и им предлагался бы откат.
+- Ограничения: на Windows обновляется только `cloud-desktop.exe` — `cloudsync.exe` и версия в «Приложениях» остаются от установщика; манифест сам не подписан (подписаны ассеты), так что подменивший его может предложить лишь другой подписанный нами ассет.
+- `minClientVersion` (E15-4): подключение спрашивает `/sync/info` перед стартом движка и раз в час; если сервер требует версию новее — движок останавливается, статус `too_old` с нужной версией, в окне — подсказка и «Проверить сейчас», раз в час — новая попытка.
+
+Проверка целиком на машине — сборка с тегом `updatetest` (`make app TAGS=production,updatetest`): только она читает `CLOUD_UPDATE_MANIFEST` (адрес манифеста) и `CLOUD_UPDATE_PUBLIC_KEY` (PEM одноразового ключа). Старая версия — `make app VERSION=0.0.1 TAGS=…`, новая — `make mac-update VERSION=0.0.2 TAGS=…`, подпись — `UPDATE_SIGNING_KEY="$(cat test-priv.pem)" go run ./cmd/signupdate -version 0.0.2 -base http://127.0.0.1:8765 -public-key test-pub.pem -o rel/update.json rel/*`, раздать каталог `python3 -m http.server`. Перезапущенное `open -n` приложение получает окружение launchd, а не `--env` старого.
 
 ## Wails
 

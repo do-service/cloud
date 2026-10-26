@@ -254,8 +254,9 @@ jobs:
       - run: npm ci --prefer-offline
       - run: npm run test
 
-  # Desktop client, CGO off: only the packages that don't import Wails (gtk
-  # and webkit need cgo); the FSEvents watcher is excluded by its build tag.
+  # Desktop client, CGO off: only the packages that don't import Wails'
+  # application (gtk and webkit need cgo; its updater is plain Go); the
+  # FSEvents watcher is excluded by its build tag.
   desktop-lint:
     name: desktop / lint
     runs-on: ubuntu-24.04
@@ -274,7 +275,7 @@ jobs:
         run: test -z "$(gofmt -l .)" || (gofmt -l . && echo "gofmt found unformatted files (run 'make fmt')" && exit 1)
       - name: go vet
         run: |
-          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp/wails/v3/pkg/application | cut -d' ' -f1)
           go vet "${pkgs[@]}"
 
   # The integration tests build ../backend/cmd/server and run it on a
@@ -310,7 +311,7 @@ jobs:
             backend/go.sum
       - name: go test
         run: |
-          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp/wails/v3/pkg/application | cut -d' ' -f1)
           go test "${pkgs[@]}" -count=1
 
   # The window's frontend type-checks against the web code it imports

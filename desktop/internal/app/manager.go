@@ -32,9 +32,16 @@ type Options struct {
 	// in start; "" when cancelled. Nil: no dialog (errors.ErrUnsupported).
 	PickFolder func(start string) (string, error)
 	// Tune adjusts each engine's config (tests).
-	Tune   func(*engine.Config)
-	Logger *slog.Logger
+	Tune func(*engine.Config)
+	// VersionCheck is how often a syncing connection asks the server
+	// whether it still takes this client (minClientVersion), and how
+	// often one it turned away asks again; DefaultVersionCheck when 0.
+	VersionCheck time.Duration
+	Logger       *slog.Logger
 }
+
+// DefaultVersionCheck is Options.VersionCheck's default.
+const DefaultVersionCheck = time.Hour
 
 // Manager runs the app's connections: one engine per connection in this
 // process, as cloudsync sync -watch would, each under the connection's
@@ -53,7 +60,9 @@ type Manager struct {
 	signin  *signinState
 	// moving: connections whose folder MoveFolder is moving.
 	moving map[string]bool
-	wg     sync.WaitGroup
+	// view: what the tray asked the window to show (RequestView).
+	view string
+	wg   sync.WaitGroup
 }
 
 // NewManager starts the engines of the connections in the registry.
@@ -63,6 +72,9 @@ func NewManager(opts Options) (*Manager, error) {
 	}
 	if opts.OpenBrowser == nil {
 		opts.OpenBrowser = signin.OpenBrowser
+	}
+	if opts.VersionCheck <= 0 {
+		opts.VersionCheck = DefaultVersionCheck
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	m := &Manager{opts: opts, reg: state.OpenRegistry(opts.Base), ctx: ctx, stop: stop, log: opts.Logger, runners: map[string]*runner{}, moving: map[string]bool{}}
@@ -304,8 +316,16 @@ const (
 	phaseNeedSignIn phase = "needs_signin" // the device was signed out on the server
 	phaseNoFolder   phase = "no_folder"    // the sync folder's marker is gone
 	phaseMoving     phase = "moving"       // the sync folder is being moved
+	phaseTooOld     phase = "too_old"      // the server asks for a newer client
 	phaseFailed     phase = "error"
 )
+
+// tooOldError: the server's minClientVersion is above this client's.
+type tooOldError struct{ min string }
+
+func (e *tooOldError) Error() string {
+	return "app: the server needs client version " + e.min + " or newer"
+}
 
 // runner keeps one connection's engine running, opening it again after
 // what can pass: another process letting go, the folder coming back, the
@@ -322,6 +342,8 @@ type runner struct {
 	sess  *connection.Session
 	ready bool // Prepare succeeded: the mirror is there to browse
 	phase phase
+	// minVersion is the server's minClientVersion in phaseTooOld.
+	minVersion string
 	// tok is the store's TokenSource for the proxy, made once: it reads
 	// the keyring on first use only.
 	tokOnce sync.Once
@@ -378,9 +400,21 @@ func (r *runner) loop(ctx context.Context) {
 		r.sess, r.ready = nil, false
 		r.mu.Unlock()
 		s.Close()
+		var old *tooOldError
 		switch {
 		case ctx.Err() != nil:
 			return
+		case errors.As(err, &old):
+			// Not an error to retry: nothing syncs until the app is
+			// updated (or the server lowers its minimum, asked now and
+			// then).
+			log.Warn("app: the server needs a newer client", "min", old.min)
+			r.mu.Lock()
+			r.phase, r.minVersion = phaseTooOld, old.min
+			r.mu.Unlock()
+			if sleep(ctx, r.m.opts.VersionCheck) != nil {
+				return
+			}
 		case errors.Is(err, engine.ErrNeedsSignIn):
 			// Until the user signs in again, which restarts the runner.
 			r.setPhase(phaseNeedSignIn)
@@ -403,8 +437,51 @@ func (r *runner) loop(ctx context.Context) {
 }
 
 // run lists the cloud (retrying while the server can't be reached),
-// then syncs until ctx ends or the engine stops.
+// then syncs until ctx ends or the engine stops — or the server turns
+// this client away as too old (*tooOldError), asked first and then every
+// VersionCheck.
 func (r *runner) run(ctx context.Context, s *connection.Session) error {
+	if err := clientAccepted(ctx, s.Client); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	go func() {
+		t := time.NewTicker(r.m.opts.VersionCheck)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := clientAccepted(ctx, s.Client); err != nil {
+					cancel(err)
+					return
+				}
+			}
+		}
+	}()
+	err := r.prepareAndRun(ctx, s)
+	var old *tooOldError
+	if cause := context.Cause(ctx); errors.As(cause, &old) {
+		return cause
+	}
+	return err
+}
+
+// clientAccepted asks /sync/info whether the server takes this client:
+// *tooOldError if not. Any other failure is the engine's to meet.
+func clientAccepted(ctx context.Context, c *api.Client) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	info, err := c.Info(ctx)
+	if errors.Is(err, api.ErrClientTooOld) {
+		return &tooOldError{min: info.MinClientVersion}
+	}
+	return nil
+}
+
+func (r *runner) prepareAndRun(ctx context.Context, s *connection.Session) error {
 	for fails := 1; ; fails++ {
 		err := s.Engine.Prepare(ctx)
 		if err == nil {
