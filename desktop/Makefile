@@ -103,3 +103,53 @@ icon:
 	done
 	iconutil -c icns -o build/darwin/icons.icns bin/icon.iconset
 	rm -rf bin/icon.iconset bin/icon.png
+
+# Linux (E15-3): bin/Cloud-<version>-linux-<arch>.AppImage, .deb and .rpm
+# (+ .sha256) for the host's architecture only: cgo against GTK 4 and
+# WebKitGTK 6.0 doesn't cross-compile, so CI builds each on its own runner.
+.PHONY: linux linux-bin icon-linux
+LINUX_ARCH = $(shell go env GOARCH)
+LINUX_APP_ID = com.do-service.cloud
+APPIMAGE = bin/Cloud-$(VERSION)-linux-$(LINUX_ARCH).AppImage
+NFPM = go run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+# The same Wails as the app's: its `generate appimage` bundles WebKitGTK
+# (helper processes included) with linuxdeploy's GTK plugin.
+WAILS3 = go run github.com/wailsapp/wails/v3/cmd/wails3@$(shell go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+# A pinned linuxdeploy, put where Wails looks before downloading its
+# "continuous" build.
+LINUXDEPLOY_VERSION = 1-alpha-20251107-1
+LINUXDEPLOY_ARCH = $(if $(filter arm64,$(LINUX_ARCH)),aarch64,x86_64)
+LINUXDEPLOY_SHA256_x86_64 = c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+LINUXDEPLOY_SHA256_aarch64 = 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+
+# cloudsync without cgo: inotify needs none, and a static binary runs on
+# any distro.
+linux-bin: frontend
+	rm -rf bin/linux
+	CGO_ENABLED=1 go build -tags production -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/linux/cloud-desktop ./cmd/cloud-desktop
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/linux/cloudsync ./cmd/cloudsync
+
+linux: linux-bin
+	rm -rf bin/appimage bin/*.AppImage* bin/*.deb* bin/*.rpm*
+	mkdir -p bin/appimage
+	curl -fsSL --retry 3 -o bin/appimage/linuxdeploy-$(LINUXDEPLOY_ARCH).AppImage \
+		https://github.com/linuxdeploy/linuxdeploy/releases/download/$(LINUXDEPLOY_VERSION)/linuxdeploy-$(LINUXDEPLOY_ARCH).AppImage
+	echo "$(LINUXDEPLOY_SHA256_$(LINUXDEPLOY_ARCH))  bin/appimage/linuxdeploy-$(LINUXDEPLOY_ARCH).AppImage" | sha256sum -c -
+	cp build/linux/icons/256.png bin/appimage/$(LINUX_APP_ID).png
+	$(WAILS3) generate appimage -binary bin/linux/cloud-desktop -icon bin/appimage/$(LINUX_APP_ID).png \
+		-desktopfile build/linux/$(LINUX_APP_ID).desktop -builddir bin/appimage -outputdir bin/appimage
+	mv bin/appimage/cloud-desktop-$(LINUXDEPLOY_ARCH).AppImage "$(APPIMAGE)"
+	rm -rf bin/appimage
+	VERSION=$(VERSION) GOARCH=$(LINUX_ARCH) $(NFPM) package -f build/linux/nfpm.yaml -p deb -t bin/
+	VERSION=$(VERSION) GOARCH=$(LINUX_ARCH) $(NFPM) package -f build/linux/nfpm.yaml -p rpm -t bin/
+	cd bin && for f in *.AppImage *.deb *.rpm; do sha256sum "$$f" > "$$f.sha256"; done
+
+# Regenerates build/linux/icons/*.png (committed) from build/darwin/icon.go,
+# on a Mac like `make icon`.
+icon-linux:
+	mkdir -p bin build/linux/icons
+	go run build/darwin/icon.go bin/icon.png
+	for s in 32 48 64 128 256 512; do \
+		sips -z $$s $$s bin/icon.png --out build/linux/icons/$$s.png >/dev/null || exit 1; \
+	done
+	rm -f bin/icon.png

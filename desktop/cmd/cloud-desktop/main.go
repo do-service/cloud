@@ -119,6 +119,12 @@ func main() {
 			// quit it.
 			ActivationPolicy: application.ActivationPolicyAccessory,
 		},
+		Linux: application.LinuxOptions{
+			// The default comes from Name, which has no ASCII letters:
+			// "org.wails.wailsapp". The id is also the Wayland app_id that
+			// ties the window to com.do-service.cloud.desktop.
+			ApplicationID: "com.do-service.cloud",
+		},
 	})
 
 	window := a.Window.NewWithOptions(application.WebviewWindowOptions{

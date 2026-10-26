@@ -1,0 +1,62 @@
+# .deb and .rpm of the desktop client (`make linux`, run from desktop/,
+# which sets VERSION and GOARCH). https://nfpm.goreleaser.com/configuration/
+name: cloud-desktop
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: do-service
+description: |
+  Облако — клиент синхронизации файлов.
+  Окно, значок в трее и cloudsync (командная строка) для self-hosted облака.
+vendor: do-service
+homepage: https://github.com/do-service/cloud
+license: Apache-2.0
+
+contents:
+  - src: ./bin/linux/cloud-desktop
+    dst: /usr/bin/cloud-desktop
+  - src: ./bin/linux/cloudsync
+    dst: /usr/bin/cloudsync
+  - src: ./build/linux/com.do-service.cloud.desktop
+    dst: /usr/share/applications/com.do-service.cloud.desktop
+  - src: ./build/linux/icons/32.png
+    dst: /usr/share/icons/hicolor/32x32/apps/com.do-service.cloud.png
+  - src: ./build/linux/icons/48.png
+    dst: /usr/share/icons/hicolor/48x48/apps/com.do-service.cloud.png
+  - src: ./build/linux/icons/64.png
+    dst: /usr/share/icons/hicolor/64x64/apps/com.do-service.cloud.png
+  - src: ./build/linux/icons/128.png
+    dst: /usr/share/icons/hicolor/128x128/apps/com.do-service.cloud.png
+  - src: ./build/linux/icons/256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/com.do-service.cloud.png
+  - src: ./build/linux/icons/512.png
+    dst: /usr/share/icons/hicolor/512x512/apps/com.do-service.cloud.png
+
+# Wails v3 builds against GTK 4 and WebKitGTK 6.0 by default (its GTK 3
+# stack is legacy, dropped in v3.1): Ubuntu 24.04+, Debian 13+, Fedora 40+.
+# GTK 4.14+ (GtkFileDialog, gdk_monitor_get_scale): Debian 12's 4.8 has
+# WebKitGTK 6.0 too, installs, and fails at start without the bound.
+# The tray is a StatusNotifierItem over D-Bus, no libappindicator; GNOME
+# shows it only with the AppIndicator extension (Ubuntu has it built in).
+# xdg-open opens the sync folder and the browser to sign in.
+depends:
+  - libgtk-4-1 (>= 4.14)
+  - libwebkitgtk-6.0-4
+recommends:
+  - xdg-utils
+  - gnome-shell-extension-appindicator
+
+overrides:
+  rpm:
+    depends:
+      - gtk4 >= 4.14
+      - webkitgtk6.0
+    recommends:
+      - xdg-utils
+      - gnome-shell-extension-appindicator
+
+scripts:
+  postinstall: ./build/linux/postinstall.sh
+  postremove: ./build/linux/postinstall.sh

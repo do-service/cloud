@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Облако
+GenericName=Синхронизация файлов
+Comment=Синхронизация папок с облаком
+Exec=cloud-desktop
+Icon=com.do-service.cloud
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=cloud;sync;облако;синхронизация;
+StartupNotify=true
+StartupWMClass=com.do-service.cloud

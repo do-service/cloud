@@ -67,6 +67,32 @@ make icon                        # перерисовать build/darwin/icons.i
 xattr -dr com.apple.quarantine "/Applications/Облако.app"
 ```
 
+## Сборка для Linux
+
+Wails v3 по умолчанию собирается с GTK 4 и WebKitGTK 6.0 (стек GTK 3 — устаревший, уйдёт в v3.1). Сборка — на Ubuntu 24.04, поэтому всем трём пакетам нужен glibc 2.39+: Ubuntu 24.04+, Debian 13+, Fedora 40+. Ubuntu 22.04 и Debian 12 не поддерживаются: в первой нет WebKitGTK 6.0, во второй GTK 4.8 (нужен 4.14+), а AppImage на обеих не запускается из-за старого glibc.
+
+```sh
+sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev dpkg-dev   # Ubuntu 24.04+
+cd desktop/frontend && npm ci && cd ..
+make linux                       # для архитектуры машины: bin/linux/{cloud-desktop,cloudsync} и пакеты (+ .sha256)
+make linux VERSION=1.2.3         # версия явно; по умолчанию — из последнего тега v* (git describe)
+make icon-linux                  # перерисовать build/linux/icons/*.png (на Mac, как make icon)
+```
+
+| Файл | Для чего |
+| --- | --- |
+| `cloud-desktop_<версия>_<arch>.deb` | Ubuntu 24.04+, Debian 13+: `sudo apt install ./cloud-desktop_*.deb` |
+| `cloud-desktop-<версия>-1.<arch>.rpm` | Fedora 40+: `sudo dnf install ./cloud-desktop-*.rpm` |
+| `Cloud-<версия>-linux-<arch>.AppImage` | остальные дистрибутивы с glibc 2.39+: `chmod +x` и запустить; без FUSE 2 — `--appimage-extract-and-run` |
+
+Версия с суффиксом (`1.2.3-rc1`) в .deb и .rpm становится `1.2.3~rc1` — так nfpm сортирует пререлизы раньше выпуска.
+
+- Пакеты ставят `cloud-desktop` и `cloudsync` в `/usr/bin`, ярлык `com.do-service.cloud.desktop` («Облако») и значки в `hicolor`; зависят от `libgtk-4-1 (>= 4.14)` и `libwebkitgtk-6.0-4` (Fedora: `gtk4 >= 4.14`, `webkitgtk6.0`), рекомендуют `xdg-utils` (открыть папку и браузер для входа) и `gnome-shell-extension-appindicator`. Конфиг — `build/linux/nfpm.yaml` (nfpm).
+- Трей — StatusNotifierItem по D-Bus, libappindicator не нужен; в GNOME без расширения AppIndicator (в Ubuntu оно встроено, в Fedora и Debian — пакет выше, затем включить) значка не видно, окно открывается из меню приложений.
+- AppImage собирает `wails3 generate appimage` той же версии Wails, что и приложение: linuxdeploy (закреплённый релиз, sha256 в Makefile) с плагином GTK кладёт внутрь GTK 4 и WebKitGTK вместе с его процессами (`WebKitWebProcess`, `WebKitNetworkProcess`), системный WebKitGTK не нужен. С системы берётся то, что linuxdeploy не кладёт по правилам AppImage (glibc, X11/Wayland, fontconfig, freetype, harfbuzz, Mesa — есть на любом рабочем столе), и песочница WebKit: `bwrap` и `xdg-dbus-proxy` (пакеты `bubblewrap`, `xdg-dbus-proxy`; без них окно падает при старте). Внутри только `cloud-desktop`, без `cloudsync`.
+- `cloud-desktop` — с cgo (GTK), поэтому сборка только под архитектуру машины; `cloudsync` — без cgo, статический. Id приложения GTK (и `app_id` окна в Wayland) — `com.do-service.cloud`, по нему окно связывается с ярлыком.
+- CI: job `linux` в `.github/workflows/desktop.yml` на `ubuntu-24.04` (amd64) и `ubuntu-24.04-arm` (arm64), артефакты `desktop-linux-<arch>`; `go test ./...` там идёт с cgo под `xvfb-run`.
+
 ## Wails
 
 Закреплён **`github.com/wailsapp/wails/v3 v3.0.0-beta.34`** (тег от 2026-10-20, последний на 2026-10-25). Причины:

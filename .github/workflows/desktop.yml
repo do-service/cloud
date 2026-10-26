@@ -1,8 +1,9 @@
 # The desktop client for every OS, one job each (E15): macOS — universal
-# .app in a DMG (`make dmg` in desktop/). Not signed yet (ad-hoc on macOS),
-# until there are certificates. Every run keeps the packages as workflow
-# artifacts named desktop-<os>; a v* tag also attaches them to that tag's
-# release.
+# .app in a DMG (`make dmg` in desktop/).
+# Linux — AppImage, .deb and .rpm for amd64 and arm64 (`make linux`).
+# Not signed yet (ad-hoc on macOS), until there are certificates. Every run
+# keeps the packages as workflow artifacts named desktop-<os>[-<arch>]; a v*
+# tag also attaches them to that tag's release.
 name: desktop
 
 on:
@@ -65,9 +66,75 @@ jobs:
             desktop/bin/*.dmg.sha256
           if-no-files-found: error
 
+  linux:
+    # cgo against GTK 4 and WebKitGTK 6.0 doesn't cross-compile: one runner
+    # per architecture, `make linux` packages the host's.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # git describe needs the tags for the version.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # dpkg-dev: linuxdeploy's GTK plugin asks dpkg-architecture for the
+      # library directory.
+      - name: Install GTK and WebKitGTK
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev dpkg-dev xvfb
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: desktop/frontend
+        run: npm ci --no-audit --no-fund
+
+      # With cgo, unlike desktop:test in ci.yml, so the Wails packages build
+      # too; under Xvfb for whatever opens a display. No postgres here: the
+      # tests against the real server skip.
+      - name: go test
+        working-directory: desktop
+        run: xvfb-run -a go test ./... -count=1
+
+      - name: make linux
+        working-directory: desktop
+        run: |
+          make linux
+          file bin/linux/cloud-desktop bin/linux/cloudsync
+          ls -l bin
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-linux-${{ matrix.arch }}
+          path: |
+            desktop/bin/*.AppImage
+            desktop/bin/*.deb
+            desktop/bin/*.rpm
+            desktop/bin/*.sha256
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos]
+    needs: [macos, linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

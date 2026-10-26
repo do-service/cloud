@@ -136,7 +136,7 @@ frontend/            Vite + React + Mantine, алиас @web → ../../frontend/
 
 - macOS: universal `.app`, DMG; подпись и нотаризация — позже.
 - Windows: Wails без cgo — кросс-сборка, NSIS, WebView2.
-- Linux: gtk3, webkit2gtk-4.1, appindicator; AppImage и deb/rpm.
+- Linux: GTK 4.14+ и WebKitGTK 6.0 (сборка Wails v3 по умолчанию), трей — StatusNotifierItem по D-Bus без appindicator (в GNOME нужно расширение AppIndicator); AppImage и deb/rpm, сборка на раннере каждой архитектуры.
 - Обновления v1: `minClientVersion` в `/sync/info` и уведомление со ссылкой.
 - CI: `desktop:lint`, `desktop:test` (сервер на одноразовой базе, как `test-webdav`), сборки Linux/Windows; macOS — на mac-раннере.
 
