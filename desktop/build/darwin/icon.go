@@ -6,16 +6,23 @@
 // shape and margins of macOS 11+ app icons. A file of its own rather than
 // a package: it isn't part of the client, and `go run` takes it as is.
 //
-//	go run icon.go out.png
+// Given a .ico name, it writes the Windows icon for `make windows`
+// instead: the same drawing at the usual sizes, with the narrow margins
+// of Windows icons.
+//
+//	go run icon.go out.png|out.ico
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/png"
 	"log"
 	"math"
 	"os"
+	"strings"
 )
 
 const (
@@ -56,22 +63,23 @@ func inCloud(x, y float64) bool {
 	return u >= 0.33 && u <= 0.75 && v >= 0.58 && v <= 0.75
 }
 
-func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage: go run icon.go out.png")
-	}
-	img := image.NewNRGBA(image.Rect(0, 0, size, size))
-	for py := 0; py < size; py++ {
-		t := float64(py) / size
+// render draws the icon n px wide; span is how much of the 1024 px grid
+// it shows, centred: less than size crops the margins.
+func render(n int, span float64) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, n, n))
+	scale := span / float64(n)
+	at := func(p int, s int) float64 { return size/2 + (float64(p)+(float64(s)+0.5)/ss-float64(n)/2)*scale }
+	for py := 0; py < n; py++ {
+		t := (size/2 + (float64(py)-float64(n)/2)*scale - (size-span)/2) / span
 		var bg [3]float64
 		for i := range bg {
 			bg[i] = top[i] + (bottom[i]-top[i])*t
 		}
-		for px := 0; px < size; px++ {
+		for px := 0; px < n; px++ {
 			var a, w float64
 			for sy := 0; sy < ss; sy++ {
 				for sx := 0; sx < ss; sx++ {
-					x, y := float64(px)+(float64(sx)+0.5)/ss, float64(py)+(float64(sy)+0.5)/ss
+					x, y := at(px, sx), at(py, sy)
 					if inPlate(x, y) {
 						a++
 						if inCloud(x, y) {
@@ -93,11 +101,65 @@ func main() {
 			})
 		}
 	}
-	f, err := os.Create(os.Args[1])
+	return img
+}
+
+// ico packs images as uncompressed 32-bit bitmaps, which every reader
+// takes (NSIS among them), unlike the PNG entries of newer icons.
+func ico(imgs []*image.NRGBA) []byte {
+	var dir, data bytes.Buffer
+	le := func(b *bytes.Buffer, v ...any) {
+		for _, x := range v {
+			binary.Write(b, binary.LittleEndian, x)
+		}
+	}
+	le(&dir, uint16(0), uint16(1), uint16(len(imgs)))
+	offset := 6 + 16*len(imgs)
+	for _, img := range imgs {
+		n := img.Rect.Dx()
+		maskRow := (n + 31) / 32 * 4
+		var bmp bytes.Buffer
+		// BITMAPINFOHEADER; the height counts the AND mask too.
+		le(&bmp, uint32(40), int32(n), int32(2*n), uint16(1), uint16(32), uint32(0),
+			uint32(n*n*4+n*maskRow), int32(0), int32(0), uint32(0), uint32(0))
+		for y := n - 1; y >= 0; y-- {
+			for x := 0; x < n; x++ {
+				c := img.NRGBAAt(x, y)
+				bmp.Write([]byte{c.B, c.G, c.R, c.A})
+			}
+		}
+		// All zero: the alpha channel alone says what's transparent.
+		bmp.Write(make([]byte, n*maskRow))
+		// 0 means 256 in the one-byte width and height.
+		le(&dir, uint8(n), uint8(n), uint8(0), uint8(0), uint16(1), uint16(32), uint32(bmp.Len()), uint32(offset))
+		offset += bmp.Len()
+		data.Write(bmp.Bytes())
+	}
+	return append(dir.Bytes(), data.Bytes()...)
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		log.Fatal("usage: go run icon.go out.png|out.ico")
+	}
+	out := os.Args[1]
+	if strings.HasSuffix(out, ".ico") {
+		var imgs []*image.NRGBA
+		for _, n := range []int{16, 24, 32, 48, 64, 256} {
+			// The plate fills all but a few percent: Windows draws no
+			// shadow around icons, as the Dock does.
+			imgs = append(imgs, render(n, plate*1.06))
+		}
+		if err := os.WriteFile(out, ico(imgs), 0o644); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	f, err := os.Create(out)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := png.Encode(f, img); err != nil {
+	if err := png.Encode(f, render(size, size)); err != nil {
 		log.Fatal(err)
 	}
 	if err := f.Close(); err != nil {

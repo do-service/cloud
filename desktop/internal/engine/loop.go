@@ -67,7 +67,7 @@ func (e *Engine) SyncOnce(ctx context.Context) (PassResult, error) {
 // Run syncs until ctx ends: a pass whenever the watcher reports changes
 // or the server's, passes back to back while they do something. Idle, it
 // long-polls the server's changes (Config.Wait), cut short by a local
-// change. Without a watcher (Windows for now, or no cgo on macOS) the
+// change. Without a watcher (no cgo on macOS, a share Windows can't watch) the
 // folder is rescanned every FallbackRescan. A pass failing for the
 // network is retried with backoff (offline, Status); paused, Run waits
 // for Resume — also one made by another process (the flag in state.db).

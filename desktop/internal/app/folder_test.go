@@ -32,6 +32,8 @@ func TestChangeFolder(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "state"))
 	base, err := state.BaseDir()
 	if err != nil {
 		t.Fatal(err)

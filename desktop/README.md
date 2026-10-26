@@ -17,7 +17,7 @@ internal/app/        всё окно без Wails (тесты с CGO_ENABLED=0):
 internal/connection/ подключение вне движка, общее для CLI и приложения: Setup после входа, Open под блокировкой, Remove
 internal/state/      реестр подключений (connections.json) и state.db подключения: SQLite (modernc), журнал ops
 internal/localfs/    скан, file id, имена (golden-векторы с сервером), игнор, атомарная запись, маркер .cloudsync
-internal/watch/      FSEvents (darwin && cgo), inotify (linux), на остальных — ErrUnsupported; Debounce → грязные пути
+internal/watch/      FSEvents (darwin && cgo), inotify (linux), ReadDirectoryChangesW (windows), на остальных — ErrUnsupported; Debounce → грязные пути
 frontend/            Vite + React + Mantine, алиас @web → ../../frontend/src
 ```
 
@@ -93,6 +93,21 @@ make icon-linux                  # перерисовать build/linux/icons/*.
 - `cloud-desktop` — с cgo (GTK), поэтому сборка только под архитектуру машины; `cloudsync` — без cgo, статический. Id приложения GTK (и `app_id` окна в Wayland) — `com.do-service.cloud`, по нему окно связывается с ярлыком.
 - CI: job `linux` в `.github/workflows/desktop.yml` на `ubuntu-24.04` (amd64) и `ubuntu-24.04-arm` (arm64), артефакты `desktop-linux-<arch>`; `go test ./...` там идёт с cgo под `xvfb-run`.
 
+## Сборка для Windows
+
+```sh
+cd desktop/frontend && npm ci && cd ..
+make windows                     # bin/Cloud-<версия>-windows-{amd64,arm64}-setup.exe и .zip (+ .sha256)
+make windows VERSION=1.2.3
+```
+
+- Wails на Windows без cgo, поэтому сборка — кросс-компиляция с любой ОС (`CGO_ENABLED=0`, `cloud-desktop.exe` с `-H windowsgui`, `cloudsync.exe` — консольный). Нужны `makensis` (NSIS 3: `brew install makensis`, `choco install nsis`) и `zip` или `7z`.
+- Значок, манифест (Windows 10+, per-monitor v2 DPI, common controls 6, длинные пути) и версия — `.syso` из `go-winres` (`go run github.com/tc-hib/go-winres@v0.3.3`, настройки — `build/windows/winres.json`); `.ico` рисует тот же `build/darwin/icon.go` с узкими полями.
+- Установщик — `build/windows/installer.nsi` по образцу шаблона Wails: для текущего пользователя, без прав администратора, в `%LOCALAPPDATA%\Programs\Cloud`, ярлык в «Пуске», удаление через «Приложения» (состояние в `%LOCALAPPDATA%\Cloud` и папки синхронизации остаются). Если WebView2 Runtime нет (бывает на Windows 10), ставит его загрузчиком Microsoft из модуля Wails. Установщик amd64 идёт и на ARM64 (эмуляция x64), arm64 — только на ARM64. Zip — те же два `.exe` без установки; WebView2 тогда должен уже быть.
+- CI: job `windows` на `windows-2025` — `go test` пакетов без Wails (в т. ч. вотчер) и `make windows`, артефакт `desktop-windows`.
+
+Подписи Authenticode нет, поэтому SmartScreen при первом запуске установщика показывает «Windows защитила ваш компьютер»: «Подробнее» → «Выполнить в любом случае».
+
 ## Wails
 
 Закреплён **`github.com/wailsapp/wails/v3 v3.0.0-beta.34`** (тег от 2026-10-20, последний на 2026-10-25). Причины:
@@ -150,7 +165,7 @@ cloudsync sync -watch                        # или -once; status, problems �
 
 ## Вотчер
 
-На Windows вотчера пока нет (`ErrUnsupported`, движок живёт ресканами): fsnotify открывает дескриптор на каждую папку, а открытый дескриптор подпапки не даёт переименовать родителя; нужен один рекурсивный ReadDirectoryChangesW на корень. inotify (Linux) — через fsnotify, по наблюдению на каждую папку; переполнение очереди → `MustRescan` корня, нехватка `fs.inotify.max_user_watches` при старте → ошибка `New`.
+На Windows — один рекурсивный ReadDirectoryChangesW на корень (`rdcw.go`, overlapped I/O), а не fsnotify: тот открывает дескриптор на каждую папку, а открытый дескриптор подпапки не даёт переименовать родителя. Переполнение буфера → `MustRescan` корня; переименование самого корня Windows не сообщает — раз в 5 с путь дескриптора сверяется с корнем (`RootChanged`); файловая система без поддержки (некоторые сетевые) → `ErrUnsupported`, ресканы. inotify (Linux) — через fsnotify, по наблюдению на каждую папку; переполнение очереди → `MustRescan` корня, нехватка `fs.inotify.max_user_watches` при старте → ошибка `New`.
 
 ## FSEvents
 

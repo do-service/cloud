@@ -57,11 +57,13 @@ func TestNested(t *testing.T) {
 
 func TestRegistry(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Cloud")
+	// Absolute on every OS, which the registry insists on.
+	v := filepath.Join(t.TempDir(), "v")
 	r := OpenRegistry(dir)
 	if conns, err := r.List(); err != nil || len(conns) != 0 {
 		t.Fatalf("empty List() = %v, %v", conns, err)
 	}
-	a, err := r.Add(Connection{Server: "https://Cloud.Example.ru/", UserID: "u1", UserName: "Василий", LocalRoot: "/Users/v/Cloud/cloud.example.ru"})
+	a, err := r.Add(Connection{Server: "https://Cloud.Example.ru/", UserID: "u1", UserName: "Василий", LocalRoot: filepath.Join(v, "Cloud", "cloud.example.ru")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,29 +71,29 @@ func TestRegistry(t *testing.T) {
 		t.Fatalf("Add = %+v", a)
 	}
 	// Another user on the same server, another server: fine.
-	b, err := r.Add(Connection{Server: "https://cloud.example.ru", UserID: "u2", LocalRoot: "/Users/v/Cloud/u2"})
+	b, err := r.Add(Connection{Server: "https://cloud.example.ru", UserID: "u2", LocalRoot: filepath.Join(v, "Cloud", "u2")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Add(Connection{Server: "https://cloud.example.ru:443", UserID: "u1", LocalRoot: "/Users/v/Other"}); !errors.Is(err, ErrDuplicate) {
+	if _, err := r.Add(Connection{Server: "https://cloud.example.ru:443", UserID: "u1", LocalRoot: filepath.Join(v, "Other")}); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("same account again: %v", err)
 	}
-	if _, err := r.Add(Connection{Server: "https://other.example", UserID: "u1", LocalRoot: "/Users/v/Cloud/u2/inner"}); !errors.Is(err, ErrNested) {
+	if _, err := r.Add(Connection{Server: "https://other.example", UserID: "u1", LocalRoot: filepath.Join(v, "Cloud", "u2", "inner")}); !errors.Is(err, ErrNested) {
 		t.Fatalf("nested folder: %v", err)
 	}
 	if _, err := r.Add(Connection{Server: "https://other.example", UserID: "u1", LocalRoot: "relative"}); err == nil {
 		t.Fatal("relative folder accepted")
 	}
-	if err := r.SetLocalRoot(b.ID, "/Users/v/Cloud"); !errors.Is(err, ErrNested) {
+	if err := r.SetLocalRoot(b.ID, filepath.Join(v, "Cloud")); !errors.Is(err, ErrNested) {
 		t.Fatalf("SetLocalRoot to a parent of another: %v", err)
 	}
-	if err := r.SetLocalRoot(b.ID, "/Users/v/Cloud2"); err != nil {
+	if err := r.SetLocalRoot(b.ID, filepath.Join(v, "Cloud2")); err != nil {
 		t.Fatal(err)
 	}
 
 	// A fresh registry reads what the first one wrote.
 	conns, err := OpenRegistry(dir).List()
-	if err != nil || len(conns) != 2 || conns[0] != a || conns[1].LocalRoot != "/Users/v/Cloud2" {
+	if err != nil || len(conns) != 2 || conns[0] != a || conns[1].LocalRoot != filepath.Join(v, "Cloud2") {
 		t.Fatalf("List() = %+v, %v", conns, err)
 	}
 	if err := r.Remove(a.ID); err != nil {

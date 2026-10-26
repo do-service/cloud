@@ -42,13 +42,13 @@ import (
 //
 // go test ./internal/engine -run SyncProperty -rapid.checks=1000 -rapid.seed=N
 func TestSyncProperty(t *testing.T) {
-	foldCase := caseInsensitive(t)
+	foldCase, foldForm := diskFolds(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		dir, err := os.MkdirTemp(t.TempDir(), "prop-")
 		if err != nil {
 			rt.Fatal(err)
 		}
-		m := newPropModel(rt, dir, foldCase)
+		m := newPropModel(rt, dir, foldCase, foldForm)
 		defer m.h.close()
 		rt.Repeat(map[string]func(*rapid.T){
 			"localWrite":  m.localWrite,
@@ -77,6 +77,7 @@ type propModel struct {
 	s        *fakeServer
 	h        *harness
 	foldCase bool
+	foldForm bool
 	n        int
 	// u2's root and the folders it shares: ro read-only, rw writable
 	// (while rwWrite).
@@ -90,8 +91,8 @@ type propModel struct {
 	crashK atomic.Int64
 }
 
-func newPropModel(rt *rapid.T, dir string, foldCase bool) *propModel {
-	m := &propModel{s: newFakeServer(), foldCase: foldCase}
+func newPropModel(rt *rapid.T, dir string, foldCase, foldForm bool) *propModel {
+	m := &propModel{s: newFakeServer(), foldCase: foldCase, foldForm: foldForm}
 	m.rng = rand.New(rand.NewPCG(rapid.Uint64().Draw(rt, "seed"), 1))
 	m.s.fault = func(string) (bool, bool) {
 		m.mu.Lock()
@@ -126,21 +127,28 @@ func newPropModel(rt *rapid.T, dir string, foldCase bool) *propModel {
 	return m
 }
 
-func caseInsensitive(t *testing.T) bool {
+// diskFolds tells whether the temp dir's disk takes names differing in
+// case, and in Unicode form (NFC, NFD), for one: APFS folds both, NTFS
+// only case, ext4 neither.
+func diskFolds(t *testing.T) (foldCase, foldForm bool) {
 	d := t.TempDir()
-	if err := os.WriteFile(filepath.Join(d, "X"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(d, "Xé"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := os.Stat(filepath.Join(d, "x"))
-	return err == nil
+	_, errCase := os.Stat(filepath.Join(d, "xé"))
+	_, errForm := os.Stat(filepath.Join(d, "Xé"))
+	return errCase == nil, errForm == nil
 }
 
 // Names: few, so they collide; case and Unicode variants only where the
-// disk folds them (on a case-sensitive one they're two files the server
-// can't hold, a problem by design).
+// disk folds them (otherwise they're two files the server can't hold, a
+// problem by design).
 func (m *propModel) names() []string {
-	if m.foldCase {
+	switch {
+	case m.foldCase && m.foldForm:
 		return []string{"a.txt", "A.TXT", "b", "é.txt", "é.txt", "Dir"}
+	case m.foldCase:
+		return []string{"a.txt", "A.TXT", "b", "é.txt", "Dir"}
 	}
 	return []string{"a.txt", "b", "é.txt", "dir"}
 }

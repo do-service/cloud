@@ -15,3 +15,4 @@ cloud.env
 .DS_Store
 .idea/
 bench/tokens.jsonl
+desktop/cmd/*/rsrc_windows_*.syso

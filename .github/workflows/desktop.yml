@@ -1,6 +1,7 @@
 # The desktop client for every OS, one job each (E15): macOS — universal
-# .app in a DMG (`make dmg` in desktop/).
-# Linux — AppImage, .deb and .rpm for amd64 and arm64 (`make linux`).
+# .app in a DMG (`make dmg` in desktop/); Windows — installers and zips
+# for amd64 and arm64 (`make windows`); Linux — AppImage, .deb and .rpm for
+# amd64 and arm64 (`make linux`).
 # Not signed yet (ad-hoc on macOS), until there are certificates. Every run
 # keeps the packages as workflow artifacts named desktop-<os>[-<arch>]; a v*
 # tag also attaches them to that tag's release.
@@ -132,9 +133,102 @@ jobs:
             desktop/bin/*.sha256
           if-no-files-found: error
 
+  # x64 runner; arm64 is cross-built (no cgo on Windows). The tests are
+  # the packages without Wails, the RDCW watcher among them; the
+  # integration ones skip, there's no postgres here.
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Go sources and test data as committed, not with CRLF.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: desktop/frontend
+        run: npm ci --no-audit --no-fund
+
+      # Not on windows-2025. The Chocolatey feed now and then answers 504,
+      # and choco then exits 0 having installed nothing: hence the check
+      # and the retries.
+      - name: NSIS
+        run: |
+          nsis="/c/Program Files (x86)/NSIS"
+          for _ in 1 2 3 4 5; do
+            [ -x "$nsis/makensis.exe" ] && break
+            choco install nsis --version 3.13.0 --no-progress -y || true
+            [ -x "$nsis/makensis.exe" ] || sleep 20
+          done
+          "$nsis/makensis.exe" -VERSION
+          cygpath -w "$nsis" >> "$GITHUB_PATH"
+
+      - name: go test
+        working-directory: desktop
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mapfile -t pkgs < <(go list -f '{{.ImportPath}}{{range .Deps}} {{.}}{{end}}' ./... | grep -v github.com/wailsapp | cut -d' ' -f1)
+          go test -count=1 "${pkgs[@]}"
+
+      - name: make windows
+        working-directory: desktop
+        run: |
+          make windows
+          file bin/windows/*/*.exe bin/*.exe
+          ls -l bin
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-windows
+          path: |
+            desktop/bin/*-setup.exe
+            desktop/bin/*.zip
+            desktop/bin/*.sha256
+          if-no-files-found: error
+
+      # The x64 installer on this runner: silent install, cloudsync and the
+      # window start (and the window is still up after 15 s), silent removal.
+      # //S and //FI: Git Bash would turn /S into the path S:/.
+      - name: Install and start
+        working-directory: desktop
+        timeout-minutes: 10
+        run: |
+          wv='Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          reg query "HKLM\\SOFTWARE\\WOW6432Node\\$wv" //v pv || reg query "HKCU\\Software\\$wv" //v pv || echo "no WebView2 runtime registered"
+          setup=(bin/Cloud-*-windows-amd64-setup.exe)
+          timeout 300 "./${setup[0]}" //S
+          dir="$(cygpath "$LOCALAPPDATA")/Programs/Cloud"
+          ls -l "$dir"
+          timeout 30 "$dir/cloudsync.exe" accounts
+          "$dir/cloud-desktop.exe" > /dev/null 2>&1 &
+          sleep 15
+          tasklist //FI "IMAGENAME eq cloud-desktop.exe" | grep cloud-desktop.exe
+          taskkill //F //IM cloud-desktop.exe
+          timeout 60 "$dir/uninstall.exe" //S
+          for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$dir" ] || break; sleep 2; done
+          [ ! -e "$dir" ]
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, linux]
+    needs: [macos, linux, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

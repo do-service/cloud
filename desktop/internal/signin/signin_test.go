@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -298,8 +299,10 @@ func TestStoreWithoutKeyring(t *testing.T) {
 	if !a.TokenInFile {
 		t.Error("account doesn't say its token is in a file")
 	}
+	// Windows has no mode bits: the file is private by the ACL of the
+	// user's own profile directory.
 	fi, err := os.Stat(filepath.Join(dir, signin.TokensFile))
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("%s: %v, %v", signin.TokensFile, fi, err)
 	}
 	if tok, err := s.Token("https://a.example", "u1"); err != nil || tok != "cld_u1" {

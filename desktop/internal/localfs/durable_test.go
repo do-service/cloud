@@ -57,7 +57,8 @@ func TestSyncerGroupCommit(t *testing.T) {
 	}
 
 	fail.Store(true)
-	g.add("/x/failing")
+	failing := filepath.Join("/x", "failing")
+	g.add(failing)
 	if err := g.wait(); err == nil {
 		t.Fatal("a failed flush didn't fail its waiter")
 	}
@@ -68,7 +69,7 @@ func TestSyncerGroupCommit(t *testing.T) {
 	if err := g.wait(); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(flushed, "/x/failing") {
+	if !slices.Contains(flushed, failing) {
 		t.Fatalf("a folder whose flush failed wasn't flushed again: %v", flushed)
 	}
 }

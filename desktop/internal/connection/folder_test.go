@@ -21,6 +21,9 @@ func testBase(t *testing.T) (home, base string) {
 	home = t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	// Where os.UserHomeDir and state.BaseDir look on Windows.
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "state"))
 	base, err := state.BaseDir()
 	if err != nil {
 		t.Fatal(err)

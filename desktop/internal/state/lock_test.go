@@ -8,6 +8,7 @@ import (
 func TestLockConnection(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	l, err := LockConnection("c1")
 	if err != nil {
 		t.Fatal(err)

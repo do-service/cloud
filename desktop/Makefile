@@ -28,7 +28,7 @@ test:
 frontend:
 	cd frontend && npm run build
 	find cmd/cloud-desktop/dist -mindepth 1 ! -name .gitkeep -delete
-	cp -R frontend/dist/ cmd/cloud-desktop/dist/
+	cp -R frontend/dist/. cmd/cloud-desktop/dist/
 
 # The production tag: assets from the binary, never from a dev server.
 build: frontend
@@ -153,3 +153,42 @@ icon-linux:
 		sips -z $$s $$s bin/icon.png --out build/linux/icons/$$s.png >/dev/null || exit 1; \
 	done
 	rm -f bin/icon.png
+
+# The Windows build (E15-2): for amd64 and arm64 each, an NSIS installer
+# (per user, no admin rights) and a portable zip, both with a .sha256:
+# bin/Cloud-$(VERSION)-windows-<arch>-setup.exe and …-windows-<arch>.zip.
+# Wails needs no cgo on Windows, so this cross-builds from any OS; it
+# needs makensis (NSIS 3: brew install makensis, choco install nsis) and
+# zip or 7z. The icon, manifest and version go in through .syso files from
+# go-winres, deleted after the build. The WebView2 bootstrapper is the one
+# the pinned Wails ships (its `wails3 generate webview2bootstrapper`).
+.PHONY: windows
+GO_WINRES = go run github.com/tc-hib/go-winres@v0.3.3
+WIN_VERSION := $(shell echo '$(SHORT_VERSION).0.0.0' | cut -d. -f1-4)
+WEBVIEW2_SETUP = $(shell go list -m -f '{{.Dir}}' github.com/wailsapp/wails/v3)/internal/commands/webview2/MicrosoftEdgeWebview2Setup.exe
+ZIP = $(if $(shell command -v zip),zip -qX,7z a -tzip -bso0)
+SHA256 = $(if $(shell command -v sha256sum),sha256sum,shasum -a 256)
+
+windows: frontend
+	rm -rf bin/windows bin/Cloud-*-windows-*
+	mkdir -p bin/windows
+	go run build/darwin/icon.go bin/windows/icon.ico
+	cp '$(WEBVIEW2_SETUP)' bin/windows/
+	$(GO_WINRES) make --in build/windows/winres.json --arch amd64,arm64 --out cmd/cloud-desktop/rsrc \
+		--product-version '$(VERSION)' --file-version '$(WIN_VERSION)'
+	$(GO_WINRES) simply --manifest cli --icon bin/windows/icon.ico --arch amd64,arm64 --out cmd/cloudsync/rsrc \
+		--product-name 'Облако' --file-description 'Облако: синхронизация из командной строки' \
+		--original-filename cloudsync.exe --product-version '$(VERSION)' --file-version '$(WIN_VERSION)'
+	for arch in amd64 arm64; do \
+		name=Cloud-$(VERSION)-windows-$$arch; \
+		GOOS=windows GOARCH=$$arch CGO_ENABLED=0 go build -tags production -trimpath -ldflags "$(RELEASE_LDFLAGS) -H windowsgui" -o bin/windows/$$arch/cloud-desktop.exe ./cmd/cloud-desktop && \
+		GOOS=windows GOARCH=$$arch CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o bin/windows/$$arch/cloudsync.exe ./cmd/cloudsync && \
+		makensis -V2 -NOCD -INPUTCHARSET UTF8 -DARCH=$$arch -DVERSION='$(VERSION)' -DVI_VERSION='$(WIN_VERSION)' \
+			-DBIN='bin\windows' -DOUTFILE=bin/$$name-setup.exe \
+			build/windows/installer.nsi && \
+		(cd bin/windows/$$arch && $(ZIP) ../../$$name.zip cloud-desktop.exe cloudsync.exe) || exit 1; \
+	done
+	rm -f cmd/*/rsrc_windows_*.syso
+	cd bin && for f in Cloud-$(VERSION)-windows-*.exe Cloud-$(VERSION)-windows-*.zip; do \
+		$(SHA256) "$$f" > "$$f.sha256" || exit 1; \
+	done

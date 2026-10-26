@@ -1,8 +1,8 @@
 // Package watch reports changes under a local folder (docs/desktop-client.md):
-// FSEvents on macOS, inotify (through fsnotify) on Linux. Windows has none
-// yet (ErrUnsupported): fsnotify there opens a handle per folder, and an
-// open handle on a subfolder stops the user from renaming its parent; it
-// needs one recursive ReadDirectoryChangesW on the root (E15-2). Not
+// FSEvents on macOS, inotify (through fsnotify) on Linux, one recursive
+// ReadDirectoryChangesW on the root on Windows. Not fsnotify on Windows:
+// it opens a handle per folder, and an open handle on a subfolder stops
+// the user from renaming its parent. Not
 // fsnotify on macOS either: there it is kqueue, one file descriptor per
 // file and no recursion, which a sync folder of 100 000 files can't
 // afford; FSEvents is one stream per tree and can also replay what
