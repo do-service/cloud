@@ -1,6 +1,6 @@
 module github.com/do-service/cloud/backend
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
