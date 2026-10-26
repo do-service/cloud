@@ -59,7 +59,7 @@ make icon                        # перерисовать build/darwin/icons.i
 - Две сборки с cgo (`GOARCH=arm64`, `amd64`) склеиваются `lipo`; macOS 13+ (`MACOSX_DEPLOYMENT_TARGET`, `LSMinimumSystemVersion`). Версия — в `Info.plist` (`CFBundleShortVersionString` — только `x.y.z`) и в `api.Version` (`-ldflags -X`), её видит сервер в списке устройств.
 - `Info.plist` — `build/darwin/Info.plist` (`com.do-service.cloud`, «Облако», `LSUIElement` — без значка в Dock). Значок — облако из трея на синем фоне, нарисован `icon.go`: логотипа в репозитории нет.
 - `cloudsync` — `Облако.app/Contents/MacOS/cloudsync`, можно запускать оттуда или сделать ссылку в `PATH`.
-- CI: `.github/workflows/desktop-release.yml` на `macos-15` — DMG артефактом на PR (изменения в `desktop/`, `frontend/src/`), ручном запуске и тегах `v*`; на тег — ещё и в релиз GitHub.
+- CI: `.github/workflows/desktop.yml`, job `macos` на `macos-15` — DMG артефактом `desktop-macos` на каждый push в `main`, PR, ручной запуск (`gh workflow run desktop.yml --ref <ветка>`) и тег `v*`; на тег — ещё и в релиз GitHub.
 
 Подписи Developer ID и нотаризации пока нет, только ad-hoc (`codesign -s -`, без неё arm64 не запускает бинарник). Gatekeeper поэтому не даёт открыть скачанное приложение двойным щелчком: после копирования в «Программы» — правый щелчок → «Открыть» → «Открыть» (на macOS 15+ — «Системные настройки» → «Конфиденциальность и безопасность» → «Всё равно открыть») или снять карантин:
 

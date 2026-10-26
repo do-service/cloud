@@ -185,7 +185,7 @@ ID задачи → требование из PRD в скобках. «Зави�
 ### E15. Сборка и выпуск клиента
 | ID | Задача | Размер | Зависит |
 |----|--------|--------|---------|
-| E15-1 ✅ | macOS: universal `.app`, DMG, job на mac-раннере; подпись и нотаризация — когда будет Apple Developer ID. *`make app`/`make dmg` в `desktop/`, ad-hoc подпись; `.github/workflows/desktop-release.yml` (macos-15, на тег `v*` — в релиз GitHub)* | M | E13-1 |
+| E15-1 ✅ | macOS: universal `.app`, DMG, job на mac-раннере; подпись и нотаризация — когда будет Apple Developer ID. *`make app`/`make dmg` в `desktop/`, ad-hoc подпись; `.github/workflows/desktop.yml` (macos-15, на тег `v*` — в релиз GitHub)* | M | E13-1 |
 | E15-2 | Windows: CGO=0, NSIS, WebView2, рекурсивный ReadDirectoryChangesW для `watch` (fsnotify держит дескриптор на каждую папку и мешает переименованиям); подпись позже | M | E13-1 |
 | E15-3 | Linux: AppImage, deb/rpm, зависимости | M | E13-1 |
 | E15-4 | `minClientVersion` и уведомление об обновлении | S | E11-2 |

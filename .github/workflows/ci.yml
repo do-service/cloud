@@ -25,7 +25,7 @@ env:
 jobs:
   backend-lint:
     name: backend / lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
@@ -41,7 +41,7 @@ jobs:
 
   backend-test:
     name: backend / test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:18-alpine
@@ -73,7 +73,7 @@ jobs:
   # creates its own realm through the admin API.
   backend-e2e:
     name: backend / e2e (Keycloak)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:18-alpine
@@ -123,7 +123,7 @@ jobs:
   # and G2 threshold (p95 < 200 ms) as the full-size run in bench/README.md.
   backend-bench:
     name: backend / bench
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:18-alpine
@@ -224,7 +224,7 @@ jobs:
 
   frontend-lint:
     name: frontend / lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -240,7 +240,7 @@ jobs:
 
   frontend-test:
     name: frontend / test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -258,7 +258,7 @@ jobs:
   # and webkit need cgo); the FSEvents watcher is excluded by its build tag.
   desktop-lint:
     name: desktop / lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CGO_ENABLED: "0"
     defaults:
@@ -282,7 +282,7 @@ jobs:
   # modules' go.sum key the cache.
   desktop-test:
     name: desktop / test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:18-alpine
@@ -317,7 +317,7 @@ jobs:
   # (@web → frontend/src) with its own node_modules only.
   desktop-frontend:
     name: desktop / frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: desktop/frontend
@@ -338,7 +338,7 @@ jobs:
   image:
     name: image
     needs: [backend-test, frontend-test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write

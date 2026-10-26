@@ -3,7 +3,7 @@
 # are meant to be started on a tag to redo a failed release; on a branch
 # they push only the :sha-<commit> image and skip the release.
 #
-# desktop-release.yml uploads the desktop build to the same release, so
+# desktop.yml uploads the desktop build to the same release, so
 # whichever workflow gets there first creates it and the other reuses it.
 name: Release
 
@@ -24,7 +24,7 @@ env:
 jobs:
   image:
     name: image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -83,7 +83,7 @@ jobs:
     name: GitHub release
     if: github.ref_type == 'tag'
     needs: image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -91,7 +91,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
-      # Idempotent: a release desktop-release.yml (or a previous run) already
+      # Idempotent: a release desktop.yml (or a previous run) already
       # made is kept as is; losing a create race to it counts as success.
       - name: Create release
         run: |
