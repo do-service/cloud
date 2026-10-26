@@ -499,7 +499,12 @@ func (e *Engine) renameLocal(ctx context.Context, o Op) (func(*state.Tx) error, 
 	from, ferr := e.existsExact(o.From)
 	to, terr := e.existsExact(o.Path)
 	if ferr != nil || terr != nil || from || !to {
-		// Not done before a crash: do it.
+		// Not done before a crash: do it — to the entry planned, not
+		// another one put at its path since (a new folder gets a deleted
+		// one's inode on ext4, so the plan's pairing can be stale).
+		if from && !e.isEntry(o.From, o.Expect) {
+			return nil, fmt.Errorf("%w: %s is another entry now", errReplan, o.From)
+		}
 		if err := e.sync.Rename(e.cfg.Root, o.From, o.Path); err != nil {
 			if notExist(err) || errors.Is(err, localfs.ErrExists) {
 				return nil, fmt.Errorf("%w: %v", errReplan, err)
@@ -507,6 +512,9 @@ func (e *Engine) renameLocal(ctx context.Context, o Op) (func(*state.Tx) error, 
 			return nil, err
 		}
 	} else {
+		if !e.isEntry(o.Path, o.Expect) {
+			return nil, fmt.Errorf("%w: %s is another entry", errReplan, o.Path)
+		}
 		e.sync.Add(e.abs(dirOf(o.From)), e.abs(dirOf(o.Path)))
 	}
 	return func(tx *state.Tx) error {
@@ -555,6 +563,15 @@ func (e *Engine) renameLocal(ctx context.Context, o Op) (func(*state.Tx) error, 
 			return moveBase(tx, o.NodeID, o.BasePath, o.Path)
 		}
 	}, nil
+}
+
+// isEntry: rel has the file id of expect (any entry, without one).
+func (e *Engine) isEntry(rel string, expect *localfs.Stamp) bool {
+	if expect == nil || expect.FileID.IsZero() {
+		return true
+	}
+	st, err := localfs.Stat(e.cfg.Root, rel)
+	return err == nil && st.FileID == expect.FileID
 }
 
 func (e *Engine) removeLocal(o Op) (func(*state.Tx) error, error) {

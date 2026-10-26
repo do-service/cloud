@@ -54,6 +54,16 @@ func (p *planner) positions() {
 			if dir {
 				p.markMoved(b.RelPath, l.RelPath)
 			}
+		case posR && bok && r.ParentID == bp && isTempName(r.Name, p.s.Options.DeviceName):
+			// This device's step aside of a cycle (breakCycle), made on
+			// the server but not recorded: a crash, then a retry that
+			// failed. It isn't the server's choice: base follows it, and
+			// the next pass sends the local position.
+			to := join(dirOf(b.RelPath), r.Name)
+			p.add(Op{Kind: OpRebase, NodeID: b.NodeID, BasePath: b.RelPath, Path: to, Dir: dir})
+			if dir {
+				p.markMoved(b.RelPath, to)
+			}
 		case posR:
 			// The server's position wins over a local move.
 			p.moveLocal(b, r, l)
@@ -80,6 +90,19 @@ func (p *planner) moveLocal(b *state.Base, r *state.Remote, l *state.Local) {
 	}
 	if p.occupiedLocal(td, r.Name, l) {
 		if !p.inOccupant(td, r.Name, l) {
+			if cyc := p.cycle(l, p.localWait); cyc != nil {
+				// What holds the name waits, through others, for this
+				// one's name (the server swapped them): this one steps
+				// aside on disk, and the rest follow.
+				p.breakCycle(cyc)
+				to := join(dirOf(l.RelPath), p.freeTemp(dirOf(l.RelPath), nameOf(l.RelPath), ""))
+				p.add(Op{Kind: OpRenameLocal, NodeID: b.NodeID, From: l.RelPath, Path: to, BasePath: b.RelPath,
+					Dir: b.Kind == state.KindDir, Expect: expectOf(l)})
+				if b.Kind == state.KindDir {
+					p.markMoved(l.RelPath, to, b.RelPath)
+				}
+				return
+			}
 			// What's there moves away or aside in this pass.
 			p.deferOne()
 			return
@@ -89,12 +112,12 @@ func (p *planner) moveLocal(b *state.Base, r *state.Remote, l *state.Local) {
 		// turn inside this one (a folder swapped with its parent on
 		// disk, or so it looks on ext4 when a new folder gets a deleted
 		// one's inode), neither could ever go back first. This one steps
-		// out next to it under a free name; later passes put both where
-		// the server has them.
-		target = join(td, p.freeName(td, r.Name, r.ParentID))
+		// out next to it under a temporary name; later passes put both
+		// where the server has them.
+		target = join(td, p.freeTemp(td, r.Name, r.ParentID))
 	}
 	dir := b.Kind == state.KindDir
-	p.add(Op{Kind: OpRenameLocal, NodeID: b.NodeID, From: l.RelPath, Path: target, BasePath: b.RelPath, Dir: dir})
+	p.add(Op{Kind: OpRenameLocal, NodeID: b.NodeID, From: l.RelPath, Path: target, BasePath: b.RelPath, Dir: dir, Expect: expectOf(l)})
 	p.take(td, nameOf(target))
 	if dir {
 		p.markMoved(l.RelPath, target, b.RelPath)
@@ -123,7 +146,9 @@ func (p *planner) moveRemote(b *state.Base, r *state.Remote, l *state.Local, lp 
 	}
 	if !lok || p.remote[lp] == nil {
 		// Into a folder not on the server yet: it is created first.
-		p.deferOne()
+		if !p.tempMove(b, r, l) {
+			p.deferOne()
+		}
 		return
 	}
 	if lp == r.NodeID || p.remoteBelow(lp, r.NodeID) {
@@ -141,7 +166,9 @@ func (p *planner) moveRemote(b *state.Base, r *state.Remote, l *state.Local, lp 
 	}
 	if occ := p.remoteChild(lp, key); occ != nil && occ.NodeID != r.NodeID {
 		if p.base[occ.NodeID] != nil && p.willVacate(occ) {
-			p.deferOne()
+			if !p.tempMove(b, r, l) {
+				p.deferOne()
+			}
 			return
 		}
 		p.renameAside(l, lp, b.NodeID)
@@ -162,6 +189,138 @@ func (p *planner) moveRemote(b *state.Base, r *state.Remote, l *state.Local, lp 
 	if dir {
 		p.markMoved(b.RelPath, l.RelPath)
 	}
+}
+
+// tempMove breaks a cycle of renames the server can't make one by one:
+// a and b swapped locally, or a node moved into a new folder that takes
+// the name of another one moving into its own place. l's node waits,
+// through the others, for its own name; it steps aside on the server, in
+// its folder, under a temporary name. The others follow, and it takes its
+// local name last. Base follows it there, so the temporary name isn't
+// taken for a move made on the server.
+func (p *planner) tempMove(b *state.Base, r *state.Remote, l *state.Local) bool {
+	if !p.writable(r.ParentID) {
+		return false
+	}
+	cyc := p.cycle(l, p.nameWait)
+	if cyc == nil {
+		return false
+	}
+	p.breakCycle(cyc)
+	dir := b.Kind == state.KindDir
+	parentPath := dirOf(b.RelPath)
+	to := join(parentPath, p.freeTemp(parentPath, r.Name, r.ParentID))
+	op := Op{Kind: OpMoveRemote, NodeID: b.NodeID, ParentID: r.ParentID, Name: nameOf(to), BasePath: b.RelPath, Path: to, Dir: dir}
+	if !dir {
+		op.IfMatch = r.ETag
+	}
+	p.add(op)
+	if dir {
+		p.markMoved(b.RelPath, to)
+	}
+	return true
+}
+
+// cycle follows wait from start: the entries of the cycle, start first,
+// if it comes back to start; nil if it ends, or loops without start, or
+// meets a cycle already broken in this pass.
+func (p *planner) cycle(start *state.Local, wait func(*state.Local) *state.Local) []*state.Local {
+	if p.broken[start] {
+		return nil
+	}
+	path := []*state.Local{start}
+	seen := map[*state.Local]bool{start: true}
+	for cur := wait(start); cur != nil; cur = wait(cur) {
+		if cur == start {
+			return path
+		}
+		if seen[cur] || p.broken[cur] {
+			return nil
+		}
+		seen[cur] = true
+		path = append(path, cur)
+	}
+	return nil
+}
+
+func (p *planner) breakCycle(cyc []*state.Local) {
+	for _, l := range cyc {
+		p.broken[l] = true
+	}
+}
+
+// nameWait: the local entry whose move frees the server name that l (or
+// the new folder it is in, which the server doesn't have yet) needs —
+// that of a node leaving it (willVacate). nil when l waits for no name.
+func (p *planner) nameWait(l *state.Local) *state.Local {
+	for range 4096 {
+		parent, ok := p.nodeAt[nfc(dirOf(l.RelPath))]
+		if !ok {
+			// Its folder is new: that one's creation needs a name.
+			if l = p.local[nfc(dirOf(l.RelPath))]; l == nil {
+				return nil
+			}
+			continue
+		}
+		if p.remote[parent] == nil {
+			return nil
+		}
+		_, key, err := localfs.NormalizeName(nameOf(l.RelPath))
+		if err != nil {
+			return nil
+		}
+		occ := p.remoteChild(parent, key)
+		if occ == nil || p.claim[occ.NodeID] == l || p.base[occ.NodeID] == nil || !p.willVacate(occ) {
+			return nil
+		}
+		return p.claim[occ.NodeID]
+	}
+	return nil
+}
+
+// localWait: the local entry holding the name on disk that l's node
+// moves to locally (the server moved it, or it can't be moved there),
+// if that one moves away locally too. nil otherwise.
+func (p *planner) localWait(l *state.Local) *state.Local {
+	id, ok := p.nodeAt[nfc(l.RelPath)]
+	if !ok || p.claim[id] != l {
+		return nil
+	}
+	r, b := p.remote[id], p.base[id]
+	if r == nil || b == nil || !p.area.in(id) {
+		return nil
+	}
+	bp, bok := p.baseParent(b)
+	posR := !bok || r.ParentID != bp || r.Name != nfc(nameOf(b.RelPath))
+	if !posR && !p.pinned(id) && p.canSend(r, l) {
+		// Its local position goes to the server instead.
+		return nil
+	}
+	td, ok := p.localPathOf(r.ParentID)
+	for n := 0; !ok && n < 4096; n++ {
+		// Into a folder new on the server: its creation here needs a
+		// name.
+		r = p.remote[r.ParentID]
+		if r == nil || p.base[r.NodeID] != nil || !p.area.in(r.NodeID) {
+			return nil
+		}
+		td, ok = p.localPathOf(r.ParentID)
+	}
+	if !ok || nfc(join(td, r.Name)) == nfc(l.RelPath) {
+		return nil
+	}
+	occ := p.localKids[nfc(td)][keyOf(r)]
+	if len(occ) != 1 || occ[0] == l {
+		return nil
+	}
+	return occ[0]
+}
+
+// expectOf is the stamp a local rename expects at its source: its file id
+// tells the entry from another one put there since.
+func expectOf(l *state.Local) *localfs.Stamp {
+	st := lstamp(l)
+	return &st
 }
 
 // readOnlyAt: the nearest folder at or above dir is on the server and

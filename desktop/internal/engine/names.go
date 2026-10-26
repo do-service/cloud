@@ -46,12 +46,47 @@ func nfc(s string) string { return norm.NFC.String(s) }
 // dotfile has none. The stem is shortened to keep the name within the
 // server's 255 bytes.
 func conflictName(name, device string, at time.Time, n int) string {
+	return taggedName(name, "конфликт", device, at, n)
+}
+
+// tempName is «Имя (перенос, Устройство, ГГГГ-ММ-ДД ЧЧ-ММ).ext»: where a
+// node waits while a cycle of renames (a and b swapped) goes through, on
+// the server or on disk. It lasts a pass or two.
+func tempName(name, device string, at time.Time, n int) string {
+	return taggedName(name, "перенос", device, at, n)
+}
+
+// isTempName: name is a tempName of this device.
+func isTempName(name, device string) bool {
+	name = nfc(name)
+	if i := strings.LastIndexByte(name, '.'); i > 0 && strings.HasSuffix(name[:i], ")") {
+		name = name[:i]
+	}
+	tag := " (перенос, " + cleanDevice(device) + ", "
+	i := strings.LastIndex(name, tag)
+	if i < 0 || !strings.HasSuffix(name, ")") {
+		return false
+	}
+	rest := name[i+len(tag) : len(name)-1]
+	stamp, n, _ := strings.Cut(rest, ", ")
+	if _, err := time.Parse("2006-01-02 15-04", stamp); err != nil {
+		return false
+	}
+	for _, c := range n {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func taggedName(name, label, device string, at time.Time, n int) string {
 	name = nfc(name)
 	stem, ext := name, ""
 	if i := strings.LastIndexByte(name, '.'); i > 0 {
 		stem, ext = name[:i], name[i:]
 	}
-	tag := fmt.Sprintf(" (конфликт, %s, %s", cleanDevice(device), at.Format("2006-01-02 15-04"))
+	tag := fmt.Sprintf(" (%s, %s, %s", label, cleanDevice(device), at.Format("2006-01-02 15-04"))
 	if n > 1 {
 		tag += fmt.Sprintf(", %d", n)
 	}

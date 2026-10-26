@@ -632,6 +632,36 @@ func TestConflictName(t *testing.T) {
 	}
 }
 
+func TestTempName(t *testing.T) {
+	at := time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC)
+	for _, c := range []struct {
+		in, want string
+		n        int
+	}{
+		{"report.docx", "report (перенос, my.mac, 2026-01-02 03-04).docx", 1},
+		{"Папка", "Папка (перенос, my.mac, 2026-01-02 03-04, 3)", 3},
+		{".bashrc", ".bashrc (перенос, my.mac, 2026-01-02 03-04)", 1},
+		{strings.Repeat("я", 200) + ".txt", "", 1},
+	} {
+		got := tempName(c.in, "my.mac", at, c.n)
+		if c.want != "" && got != c.want || len(got) > 255 {
+			t.Errorf("tempName(%q) = %q, want %q", c.in, got, c.want)
+		}
+		if !isTempName(got, "my.mac") {
+			t.Errorf("%q isn't recognised", got)
+		}
+		if isTempName(got, "other") {
+			t.Errorf("%q is taken for another device's", got)
+		}
+	}
+	for _, name := range []string{"report.docx", "a (перенос, my.mac, вчера).txt", "a (перенос, my.mac, 2026-01-02 03-04, x)",
+		"a (конфликт, my.mac, 2026-01-02 03-04).txt", "a (перенос, my.mac, 2026-01-02 03-04).txt.bak"} {
+		if isTempName(name, "my.mac") {
+			t.Errorf("%q taken for a temporary name", name)
+		}
+	}
+}
+
 // sharedWorld: «Доступно мне» with a share «Проект» (S, checked) holding
 // a.txt, with perms; the own root has own.txt.
 func sharedWorld(perms state.Perm) *world {

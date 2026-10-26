@@ -119,6 +119,9 @@ type planner struct {
 	deletable map[string]int8
 	// renamed: nodes stepped aside in this pass.
 	renamed map[string]bool
+	// broken: the local entries of a cycle of renames one of which steps
+	// to a temporary name in this pass (plan_known.go, breakCycle).
+	broken map[*state.Local]bool
 	// dead: local paths of shares gone from the server (shared.go).
 	dead []string
 
@@ -133,6 +136,7 @@ func newPlanner(s *Snapshot) *planner {
 		claim: map[string]*state.Local{}, nodeAt: map[string]string{"": s.RootID}, claimed: map[*state.Local]bool{},
 		done: map[string]bool{}, covered: map[string]bool{}, plannedLocal: map[string]string{},
 		taken: map[string]map[string]bool{}, deletable: map[string]int8{}, renamed: map[string]bool{},
+		broken: map[*state.Local]bool{},
 	}
 	for i := range s.Remote {
 		r := &s.Remote[i]
@@ -523,6 +527,20 @@ func (p *planner) freeName(dir, name, parentID string) string {
 		c := conflictName(name, p.s.Options.DeviceName, p.s.Now, n)
 		k := localfs.NameKey(c)
 		if len(p.localKids[nfc(dir)][k]) == 0 && !p.isTaken(dir, c) && (parentID == "" || p.remoteChild(parentID, k) == nil) {
+			p.take(dir, c)
+			return c
+		}
+	}
+}
+
+// freeTemp is a tempName for name in local folder dir (remote folder
+// parentID), free on both sides and in base.
+func (p *planner) freeTemp(dir, name, parentID string) string {
+	for n := 1; ; n++ {
+		c := tempName(name, p.s.Options.DeviceName, p.s.Now, n)
+		k := localfs.NameKey(c)
+		if len(p.localKids[nfc(dir)][k]) == 0 && !p.isTaken(dir, c) && p.remoteChild(parentID, k) == nil &&
+			p.baseAt[nfc(join(dir, c))] == nil {
 			p.take(dir, c)
 			return c
 		}
