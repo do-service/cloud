@@ -137,9 +137,10 @@ Requirements: Docker Engine with Docker Compose v2.24 or newer.
 
 ### From the published image
 
-One file, no clone, no build: PostgreSQL, the cloud and OnlyOffice, with
-the secrets and the administrator's password generated on the first start
+One file, no clone, no build: PostgreSQL and the cloud, with the secrets
+and the administrator's password generated on the first start
 ([deploy/quickstart/docker-compose.yml](deploy/quickstart/docker-compose.yml)).
+The image is published for `linux/amd64` and `linux/arm64`.
 
 ```sh
 mkdir cloud && cd cloud
@@ -149,8 +150,14 @@ docker compose logs init    # Sign in at http://localhost:8080 as admin / <passw
 ```
 
 Change the password in the admin page after the first sign-in. The comment
-at the top of the file lists the settings (`PUBLIC_URL`, `OFFICE_URL`, ports,
-`BIND`, the image tag).
+at the top of the file lists the settings (`PUBLIC_URL`, ports, `BIND`, the
+image tag). In the file itself:
+
+- **Online editing** (OnlyOffice, a ~3 GB image) is commented out: uncomment
+  every block marked `OnlyOffice` to turn it on.
+- **Uploaded files** are in the `cloud_data` volume; to keep them in a folder
+  of the host, replace it with `./data:/data` and `sudo chown 10001 data`
+  first (the app runs as uid 10001).
 
 ### From source
 
