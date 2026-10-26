@@ -135,6 +135,9 @@ type nodeJSON struct {
 	MTime    time.Time `json:"mtime"`
 	// Permissions are the caller's rights on it: what the UI may offer.
 	Permissions []string `json:"permissions"`
+	// Shared marks a node shared on its own (with someone or by a link),
+	// in listings, for those who may manage its shares.
+	Shared bool `json:"shared,omitempty"`
 }
 
 func toJSON(n fs.Node) nodeJSON {
@@ -245,14 +248,42 @@ func (h *Handlers) listChildren(w http.ResponseWriter, r *http.Request, actorID,
 		h.fail(w, r, err)
 		return
 	}
+	shared, err := h.sharedAmong(r.Context(), items)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
 	resp := childrenResponse{Items: make([]nodeJSON, 0, len(items))}
 	for _, n := range items {
-		resp.Items = append(resp.Items, toJSON(n))
+		j := toJSON(n)
+		j.Shared = shared[n.ID]
+		resp.Items = append(resp.Items, j)
 	}
 	if next != "" {
 		resp.NextCursor = &next
 	}
 	httpx.WriteJSON(w, http.StatusOK, resp)
+}
+
+// sharedAmong tells which of a listing's items are shared, among those
+// whose shares the caller may see (reshare, as GET .../shares asks): a mere
+// recipient isn't told what else its owner shares, nor a link's visitor.
+// Checked per item: a nested share can give one child more rights than its
+// siblings have.
+func (h *Handlers) sharedAmong(ctx context.Context, items []fs.Node) (map[string]bool, error) {
+	if h.Shares == nil {
+		return nil, nil
+	}
+	var ids []string
+	for _, n := range items {
+		if n.Perms.Has(access.Reshare) {
+			ids = append(ids, n.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return h.Shares.Shared(ctx, ids)
 }
 
 // fail answers with the API error for an fs error.

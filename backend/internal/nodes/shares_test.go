@@ -102,3 +102,69 @@ func TestSharesAPI(t *testing.T) {
 		t.Fatalf("after revoke: %d", rec.Code)
 	}
 }
+
+func TestListingMarksShared(t *testing.T) {
+	e := newEnv(t, nil)
+	ctx := context.Background()
+	var bob string
+	if err := e.pool.QueryRow(ctx, `INSERT INTO users (username) VALUES ('bob') RETURNING id`).Scan(&bob); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.EnsureRoot(ctx, bob); err != nil {
+		t.Fatal(err)
+	}
+	bobSession, _, err := e.sessions.Create(ctx, bob, netip.Addr{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	people := e.mkdir(t, e.root.ID, "People")
+	linked := e.mkdir(t, e.root.ID, "Linked")
+	e.mkdir(t, e.root.ID, "Plain")
+	inner := e.mkdir(t, people.ID, "Inner")
+	e.mkdir(t, inner.ID, "Deep")
+	grant := func(id string) {
+		t.Helper()
+		if rec := e.send(t, "POST", "/api/v1/nodes/"+id+"/shares", `{"granteeType":"user","granteeId":"`+bob+`","permissions":["read"]}`); rec.Code != http.StatusOK {
+			t.Fatalf("grant: %d %s", rec.Code, rec.Body)
+		}
+	}
+	grant(people.ID)
+	grant(inner.ID)
+	if rec := e.send(t, "POST", "/api/v1/nodes/"+linked.ID+"/links", `{"mode":"view"}`); rec.Code >= 300 {
+		t.Fatalf("link: %d %s", rec.Code, rec.Body)
+	}
+
+	marks := func(rec *httptest.ResponseRecorder) map[string]bool {
+		t.Helper()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list: %d %s", rec.Code, rec.Body)
+		}
+		got := map[string]bool{}
+		for _, n := range decode[childrenResponse](t, rec).Items {
+			got[n.Name] = n.Shared
+		}
+		return got
+	}
+	if got := marks(e.send(t, "GET", "/api/v1/nodes/root/children", "")); !got["People"] || !got["Linked"] || got["Plain"] {
+		t.Fatalf("owner's root: %v", got)
+	}
+	// Marked where the share is, not below it.
+	if got := marks(e.send(t, "GET", "/api/v1/nodes/"+inner.ID+"/children", "")); got["Deep"] {
+		t.Fatalf("below a share: %v", got)
+	}
+
+	// bob may read People, not manage its shares: he isn't told of Inner's.
+	rec := e.as(t, bobSession, "GET", "/api/v1/nodes/"+people.ID+"/children", "")
+	if got := marks(rec); got["Inner"] || strings.Contains(rec.Body.String(), `"shared"`) {
+		t.Fatalf("recipient told of shares: %s", rec.Body)
+	}
+
+	// Reshare on a sibling listed first doesn't tell him of Inner's either.
+	extra := e.mkdir(t, people.ID, "Aaa")
+	if rec := e.send(t, "POST", "/api/v1/nodes/"+extra.ID+"/shares", `{"granteeType":"user","granteeId":"`+bob+`","permissions":["read","reshare"]}`); rec.Code != http.StatusOK {
+		t.Fatalf("grant reshare: %d %s", rec.Code, rec.Body)
+	}
+	if got := marks(e.as(t, bobSession, "GET", "/api/v1/nodes/"+people.ID+"/children", "")); got["Inner"] {
+		t.Fatalf("reshare on a sibling: %v", got)
+	}
+}

@@ -107,6 +107,32 @@ func (s *Service) List(ctx context.Context, actorID, nodeID string) ([]Share, er
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Share, error) { return scanShare(row) })
 }
 
+// Shared tells which of the nodes ids are shared on their own, with
+// someone or by a link: what a listing marks. One statement for a page of
+// ids, by the indexes on node_id (shares' unique key, links_node). It
+// checks no rights: the caller shows it only to who may see the shares.
+func (s *Service) Shared(ctx context.Context, ids []string) (map[string]bool, error) {
+	shared := map[string]bool{}
+	if len(ids) == 0 {
+		return shared, nil
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT node_id::text FROM shares WHERE node_id = ANY($1::uuid[])
+		UNION
+		SELECT node_id::text FROM links WHERE node_id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("shared: %w", err)
+	}
+	found, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("shared: %w", err)
+	}
+	for _, id := range found {
+		shared[id] = true
+	}
+	return shared, nil
+}
+
 // Grant shares the node with a user or a group, or changes the rights of
 // an existing share to them. No one shares more than they have.
 func (s *Service) Grant(ctx context.Context, actorID, nodeID, granteeType, granteeID string, perms access.Perm) (Share, error) {
