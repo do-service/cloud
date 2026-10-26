@@ -106,3 +106,29 @@ func TestSyncerCommit(t *testing.T) {
 		t.Fatalf("%q, %v", b, err)
 	}
 }
+
+// A folder queued for a flush and gone since — removed, or a folder on its
+// path replaced by a file — has nothing left to flush: no error, or a
+// resumed op's Wait would fail every time.
+func TestSyncerFolderGone(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"a/b", "c"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := NewSyncer()
+	s.Add(filepath.Join(root, "a", "b"), filepath.Join(root, "c"), root)
+	if err := os.RemoveAll(filepath.Join(root, "a")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "c")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Wait(); err != nil {
+		t.Fatal(err)
+	}
+}

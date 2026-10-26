@@ -1,7 +1,6 @@
 package localfs
 
 import (
-	"errors"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -35,7 +34,7 @@ func barrierDirs(dirs []string) error {
 func flushDirs(dirs []string) error {
 	for _, d := range dirs {
 		f, err := os.Open(d)
-		if errors.Is(err, os.ErrNotExist) {
+		if dirGone(err) {
 			// Renamed or removed since: whatever moved it flushes its
 			// parent, and the device is drained for the others anyway.
 			continue
@@ -57,7 +56,7 @@ func perDevice(dirs []string, fn func(*os.File) error) error {
 	seen := map[int32]bool{}
 	for _, d := range dirs {
 		f, err := os.Open(d)
-		if errors.Is(err, os.ErrNotExist) {
+		if dirGone(err) {
 			continue
 		}
 		if err != nil {

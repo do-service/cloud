@@ -2,10 +2,7 @@
 
 package localfs
 
-import (
-	"errors"
-	"os"
-)
+import "os"
 
 // fileSync is fsync: on Linux it is durable, so the data is on stable
 // storage before the rename that follows and no barrier is needed.
@@ -18,7 +15,7 @@ func barrierDirs([]string) error { return nil }
 func flushDirs(dirs []string) error {
 	for _, d := range dirs {
 		// Gone since: whatever moved or removed it flushed its parent.
-		if err := syncDir(d); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := syncDir(d); err != nil && !dirGone(err) {
 			return err
 		}
 	}

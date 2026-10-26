@@ -3,6 +3,7 @@
 package localfs
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,6 +18,13 @@ func fileID(_ string, fi fs.FileInfo) (FileID, error) {
 	}
 	// Dev is int32 on darwin and uint64 on linux.
 	return FileID{Volume: uint64(st.Dev), Index: uint64(st.Ino)}, nil
+}
+
+// dirGone: a folder queued for a flush isn't there any more — removed,
+// or a folder on its path replaced by a file (ENOTDIR). Whatever did that
+// flushed the parent.
+func dirGone(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 // syncDir makes a rename or delete in dir durable: without it a power cut
