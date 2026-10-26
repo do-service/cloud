@@ -135,6 +135,25 @@ The UI is in Russian for now. All names and files below are demo data.
 
 Requirements: Docker Engine with Docker Compose v2.24 or newer.
 
+### From the published image
+
+One file, no clone, no build: PostgreSQL, the cloud and OnlyOffice, with
+the secrets and the administrator's password generated on the first start
+([deploy/quickstart/docker-compose.yml](deploy/quickstart/docker-compose.yml)).
+
+```sh
+mkdir cloud && cd cloud
+curl -fsSLO https://raw.githubusercontent.com/do-service/cloud/main/deploy/quickstart/docker-compose.yml
+docker compose up -d
+docker compose logs init    # Sign in at http://localhost:8080 as admin / <password>
+```
+
+Change the password in the admin page after the first sign-in. The comment
+at the top of the file lists the settings (`PUBLIC_URL`, `OFFICE_URL`, ports,
+`BIND`, the image tag).
+
+### From source
+
 ```sh
 git clone https://github.com/do-service/cloud.git
 cd cloud
