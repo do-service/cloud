@@ -23,7 +23,9 @@ import (
 // TestSyncProperty is the stateful property test of docs/desktop-client.md
 // («Тесты»): random edits on both sides (the fake server and a real temp
 // folder), syncs that hit network errors or crash in the middle, cursor
-// expiry, an unplugged disk. Invariants:
+// expiry, an unplugged disk. Few names, so renames collide: swaps and
+// longer cycles of renames on either side, and folders moved into what
+// takes their place. Invariants:
 //
 //   - after every pass, content that disappeared from the disk is on the
 //     server (live, in versions or trash): the engine never destroys a
@@ -41,6 +43,11 @@ import (
 // that stays on the disk, a problem (readonly), and isn't compared.
 //
 // go test ./internal/engine -run SyncProperty -rapid.checks=1000 -rapid.seed=N
+//
+// On Linux a seed may not replay: ext4 hands a freed inode to the next
+// new file, so which entries share a file id depends on the whole disk.
+// Delete testdata/rapid first: rapid replays its fail files before
+// anything else.
 func TestSyncProperty(t *testing.T) {
 	foldCase, foldForm := diskFolds(t)
 	rapid.Check(t, func(rt *rapid.T) {

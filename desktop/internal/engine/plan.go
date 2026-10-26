@@ -209,7 +209,7 @@ func (p *planner) match() {
 		}
 		// Two entries with one id are hard links: no telling which is the
 		// moved one, so neither is.
-		if c := byID[b.FileID]; len(c) == 1 && !p.claimed[c[0]] && c[0].Kind == b.Kind {
+		if c := byID[b.FileID]; len(c) == 1 && !p.claimed[c[0]] && c[0].Kind == b.Kind && !p.reused(b, c[0]) {
 			p.claimFor(b, c[0])
 		}
 	}
@@ -227,6 +227,21 @@ func (p *planner) match() {
 			p.unclaimed = append(p.unclaimed, l)
 		}
 	}
+}
+
+// reused: l, which has b's file id, more likely got it from the disk
+// reusing a freed inode (ext4 does, at once) than by being b moved: b
+// is gone from the server (a node the client still tracks, like a share
+// no longer shared), and l sits exactly at the path of another node of
+// its kind, live on the server, which keeps it by path (replaced, as an
+// editor's save does). A node still on the server always follows its
+// file id, so a rename is told as before.
+func (p *planner) reused(b *state.Base, l *state.Local) bool {
+	if p.remote[b.NodeID] != nil {
+		return false
+	}
+	o := p.baseAt[nfc(l.RelPath)]
+	return o != nil && o.NodeID != b.NodeID && o.Kind == l.Kind && p.remote[o.NodeID] != nil
 }
 
 // splitCrossRoot unpairs what was moved locally from one tree to another

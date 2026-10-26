@@ -677,6 +677,40 @@ func sharedWorld(perms state.Perm) *world {
 	return w
 }
 
+// A file id freed and given again (ext4 reuses inodes at once): a share
+// no longer shared still has its base row, and the user's own folder of
+// the same name, re-created, got its old file id. The own folder keeps
+// its node by path; the gone share takes nothing (TestSyncProperty, seed
+// 9586001426729026332).
+func TestReusedFileID(t *testing.T) {
+	setup := func() *world {
+		w := sharedWorld(state.PermRead)
+		w.synced("D", "R", "Мои", state.KindDir, "")
+		w.synced("X", "D", "Проект", state.KindDir, "")
+		w.synced("Y", "X", "y.txt", state.KindFile, "y")
+		return w
+	}
+	t.Run("a gone node doesn't take another's folder", func(t *testing.T) {
+		w := setup()
+		w.rDelete("S", "F")
+		w.lDelete(SharedName + "/Проект")
+		w.local("Мои/Проект").FileID = w.s.Base[2].FileID // S's
+		// «Доступно мне» goes with its last share.
+		expectOps(t, w.plan(), "forget "+SharedName+"/Проект", "forget "+SharedName+"/Проект/a.txt", "remove_local "+SharedName)
+	})
+	t.Run("a node on the server still follows its file id", func(t *testing.T) {
+		// The same shape with S live: a rename of the share's folder
+		// (into another one's place), undone as read-only.
+		w := setup()
+		w.lDelete("Мои/Проект")
+		w.lMove(SharedName+"/Проект", "Мои/Проект")
+		p := w.plan()
+		if got := ops(p); !strings.Contains(got, "rename_local Мои/Проект -> "+SharedName+"/Проект") {
+			t.Errorf("plan:\n%s", got)
+		}
+	})
+}
+
 func TestSharedCells(t *testing.T) {
 	const a = SharedName + "/Проект/a.txt"
 	const copyName = "a (конфликт, Mac, 2026-10-25 12-00).txt"
