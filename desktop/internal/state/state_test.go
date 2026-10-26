@@ -332,6 +332,31 @@ func TestBaseMove(t *testing.T) {
 	})
 }
 
+// A folder moved up onto its parent's path ("a/b" → "a") with a child of
+// its own name: in either row order (a child's row written before its
+// folder's, as after the folder's row was put again).
+func TestBaseMoveUp(t *testing.T) {
+	for _, order := range [][]string{{"a/b", "a/b/b"}, {"a/b/b", "a/b"}} {
+		db := openTemp(t)
+		update(t, db, func(tx *Tx) error {
+			for _, p := range order {
+				if err := tx.PutBase(Base{NodeID: p, RelPath: p, Kind: KindDir, ETag: "e"}); err != nil {
+					return err
+				}
+			}
+			return tx.MoveBase("a/b", "a")
+		})
+		view(t, db, func(tx *Tx) error {
+			for id, want := range map[string]string{"a/b": "a", "a/b/b": "a/b"} {
+				if b, err := tx.Base(id); err != nil || b.RelPath != want {
+					t.Errorf("%v: Base(%s) = %+v, %v; want %s", order, id, b, err, want)
+				}
+			}
+			return nil
+		})
+	}
+}
+
 func TestIntendRunning(t *testing.T) {
 	ctx := context.Background()
 	db := openTemp(t)

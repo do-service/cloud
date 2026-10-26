@@ -235,9 +235,17 @@ func (t *Tx) DeleteBaseUnder(relPath string) error {
 // MoveBase re-paths a node and everything under it: a moved folder
 // carries its subtree, and the server doesn't journal the children.
 func (t *Tx) MoveBase(from, to string) error {
-	_, err := t.exec(`
-		UPDATE base SET rel_path = ?2 || substr(rel_path, length(?1) + 1)
-		WHERE rel_path = ?1 OR substr(rel_path, 1, length(?1) + 1) = ?1 || '/'`, from, to)
+	// SQLite checks uniqueness row by row: moving "a/b" up to "a" would
+	// collide on "a/b/b" → "a/b" while "a/b" itself isn't moved yet,
+	// depending on row order. A leading "/" can't start a relative path,
+	// so the rows pass through paths no other row has.
+	if _, err := t.exec(`
+		UPDATE base SET rel_path = '/' || ?2 || substr(rel_path, length(?1) + 1)
+		WHERE rel_path = ?1 OR substr(rel_path, 1, length(?1) + 1) = ?1 || '/'`, from, to); err != nil {
+		return err
+	}
+	// '/' < rel_path < '0': exactly the staged rows, by the index.
+	_, err := t.exec(`UPDATE base SET rel_path = substr(rel_path, 2) WHERE rel_path >= '/' AND rel_path < '0'`)
 	return err
 }
 
