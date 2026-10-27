@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@web/api";
 import { ErrorState, PageLoader } from "@web/components/States";
 import { t } from "@web/i18n";
+import { startLiveUpdates } from "@web/live";
 import { createQueryClient } from "@web/queryClient";
 import AddCloud from "./AddCloud";
 import {
@@ -145,6 +146,10 @@ function ConnectionView({ conn }: { conn: Connection }) {
   // Its own cache: the web code's query keys don't name the server, and
   // another connection's folder of the same id is another folder.
   const [browserClient] = useState(() => createQueryClient());
+  // The list is the server's, not the engine's: what this computer
+  // uploads, or another device or the web changes, shows only through the
+  // server's change journal, as in the web.
+  useEffect(() => startLiveUpdates(browserClient), [browserClient]);
   const [removing, setRemoving] = useState(false);
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
