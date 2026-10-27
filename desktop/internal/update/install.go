@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -77,6 +78,36 @@ func DetectInstall(env Env) (Install, string) {
 		return InstallManual, target
 	}
 	return InstallSelf, target
+}
+
+// ExtractedAppImage reports whether this is an AppImage run unpacked
+// (--appimage-extract-and-run, for a system without FUSE) rather than
+// mounted: the runtime unpacks it into $TMPDIR/appimage_extracted_<md5>,
+// a mount is $TMPDIR/.mount_*.
+func ExtractedAppImage(env Env) bool {
+	dir := env.Getenv("APPDIR")
+	return env.GOOS == "linux" && env.Getenv("APPIMAGE") != "" &&
+		strings.HasPrefix(filepath.Base(dir), "appimage_extracted_") &&
+		strings.HasPrefix(filepath.Clean(env.Executable), filepath.Clean(dir)+string(filepath.Separator))
+}
+
+// ExtractAndRun makes e's Restart start the swap helper unpacked too.
+// Wails starts it as the bare $APPIMAGE: the runtime, which takes
+// --appimage-extract-and-run from the command line or
+// APPIMAGE_EXTRACT_AND_RUN from the environment only, would try to mount
+// it without FUSE and fail before the helper signals readiness. The new
+// version, started by the helper, inherits the variable as well.
+func ExtractAndRun(e Engine) Engine {
+	return extractAndRun{e}
+}
+
+type extractAndRun struct{ Engine }
+
+func (x extractAndRun) Restart(ctx context.Context) error {
+	if err := os.Setenv("APPIMAGE_EXTRACT_AND_RUN", "1"); err != nil {
+		return err
+	}
+	return x.Engine.Restart(ctx)
 }
 
 func writable(dir string) bool {

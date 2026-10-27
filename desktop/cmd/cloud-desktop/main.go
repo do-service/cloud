@@ -277,7 +277,8 @@ func (t *trayMenu) do(it app.TrayItem) {
 // (update.IsRelease) doesn't check.
 func newUpdates(a *application.App, base string, openBrowser func(string) error) *update.Controller {
 	src := update.DefaultSource()
-	install, target := update.DetectInstall(update.OSEnv(runtime.GOOS))
+	env := update.OSEnv(runtime.GOOS)
+	install, target := update.DetectInstall(env)
 	enabled := update.IsRelease(api.Version)
 	prov, err := update.NewProvider(src)
 	if err == nil {
@@ -298,7 +299,11 @@ func newUpdates(a *application.App, base string, openBrowser func(string) error)
 	if install == update.InstallSelf {
 		update.SweepStaging(target, time.Now())
 	}
-	c := update.NewController(update.Options{Engine: a.Updater, Base: base, Version: api.Version, Enabled: enabled, Install: install, OpenBrowser: openBrowser})
+	var engine update.Engine = a.Updater
+	if install == update.InstallSelf && update.ExtractedAppImage(env) {
+		engine = update.ExtractAndRun(engine)
+	}
+	c := update.NewController(update.Options{Engine: engine, Base: base, Version: api.Version, Enabled: enabled, Install: install, OpenBrowser: openBrowser})
 	a.Event.On(updater.EventDownloadProgress, func(e *application.CustomEvent) {
 		if p, ok := e.Data.(updater.Progress); ok {
 			c.SetProgress(p.Written, p.Total)

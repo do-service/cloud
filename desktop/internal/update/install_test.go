@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,6 +42,54 @@ func TestDetectInstall(t *testing.T) {
 	if got, _ := DetectInstall(Env{GOOS: "darwin"}); got != InstallManual {
 		t.Errorf("no executable: %s", got)
 	}
+}
+
+func TestExtractedAppImage(t *testing.T) {
+	sep := string(filepath.Separator)
+	p := func(parts ...string) string { return sep + filepath.Join(parts...) }
+	img := p("home", "u", "Apps", "Cloud.AppImage")
+	extracted := p("tmp", "appimage_extracted_0123abcd")
+	env := func(goos, exe, appDir string) Env {
+		vars := map[string]string{"APPIMAGE": img, "APPDIR": appDir}
+		return Env{GOOS: goos, Executable: exe, Getenv: func(k string) string { return vars[k] }}
+	}
+	for _, tc := range []struct {
+		name string
+		env  Env
+		want bool
+	}{
+		{"extracted", env("linux", filepath.Join(extracted, "usr", "bin", "cloud-desktop"), extracted), true},
+		{"mounted", env("linux", p("tmp", ".mount_Cloud1", "usr", "bin", "cloud-desktop"), p("tmp", ".mount_Cloud1")), false},
+		// APPDIR is inherited by what an AppImage starts.
+		{"deb with an inherited APPDIR", env("linux", p("usr", "bin", "cloud-desktop"), extracted), false},
+		{"not linux", env("darwin", filepath.Join(extracted, "usr", "bin", "cloud-desktop"), extracted), false},
+	} {
+		if got := ExtractedAppImage(tc.env); got != tc.want {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestExtractAndRun(t *testing.T) {
+	t.Setenv("APPIMAGE_EXTRACT_AND_RUN", "")
+	eng := &envEngine{}
+	if err := ExtractAndRun(eng).Restart(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if seen := eng.seen; seen != "1" {
+		t.Fatalf("the helper would start with APPIMAGE_EXTRACT_AND_RUN=%q", seen)
+	}
+}
+
+// envEngine records the environment Wails' Restart would hand the helper.
+type envEngine struct {
+	fakeEngine
+	seen string
+}
+
+func (e *envEngine) Restart(context.Context) error {
+	e.seen = os.Getenv("APPIMAGE_EXTRACT_AND_RUN")
+	return nil
 }
 
 func TestWritable(t *testing.T) {
