@@ -1,11 +1,15 @@
 import { Anchor, Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconFile, IconFolderFilled, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, PageLoader } from "../components/States";
+import Viewer from "../components/Viewer";
+import { editorMode, editorQueryKey, fetchEditor, openEditorTab } from "../editor";
 import { contentUrl, download, fetchSharedWithMe, sharedWithMeQueryKey, type SharedItem } from "../files";
 import { formatDate, t } from "../i18n";
 import { useIsPhone } from "../media";
+import { inlineUrl, previewUrl, viewerKind } from "../preview";
 import { folderPath } from "./FilesPage";
 
 function levelText(item: SharedItem): string {
@@ -13,10 +17,19 @@ function levelText(item: SharedItem): string {
 }
 
 // "Shared with me" (R9): what others shared with the user or their groups.
-// A folder opens in the file manager, starting from the shared folder.
+// A folder opens in the file manager, starting from the shared folder; a
+// file opens as it does there, so a shared document can be edited together.
 export default function SharedPage() {
   const shared = useQuery({ queryKey: sharedWithMeQueryKey, queryFn: ({ signal }) => fetchSharedWithMe(signal) });
+  const editor = useQuery({ queryKey: editorQueryKey, queryFn: ({ signal }) => fetchEditor(signal), staleTime: 10 * 60 * 1000, retry: false });
   const phone = useIsPhone();
+  const viewables = (shared.data ?? []).filter((n) => viewerKind(n));
+  const [viewing, setViewing] = useState<number | null>(null);
+  const open = (n: SharedItem) => {
+    if (editorMode(editor.data, n.name)) openEditorTab(n.id);
+    else if (viewerKind(n)) setViewing(viewables.findIndex((v) => v.id === n.id));
+    else download(contentUrl(n.id));
+  };
 
   if (shared.isError && shared.data === undefined) {
     return <ErrorState error={shared.error} onRetry={() => void shared.refetch()} />;
@@ -60,7 +73,7 @@ export default function SharedPage() {
                         {item.name}
                       </Anchor>
                     ) : (
-                      <Anchor component="button" type="button" size="sm" truncate={phone ? "end" : undefined} onClick={() => download(contentUrl(item.id))}>
+                      <Anchor component="button" type="button" size="sm" truncate={phone ? "end" : undefined} onClick={() => open(item)}>
                         {item.name}
                       </Anchor>
                     )}
@@ -97,6 +110,18 @@ export default function SharedPage() {
             ))}
           </Table.Tbody>
         </Table>
+      )}
+      {viewing !== null && (
+        <Viewer
+          items={viewables}
+          index={viewing}
+          onIndex={setViewing}
+          onClose={() => setViewing(null)}
+          imageUrl={(n) => previewUrl(n.id, "l", n.etag)}
+          pdfUrl={(n) => inlineUrl(n.id)}
+          textUrl={(n) => contentUrl(n.id)}
+          onDownload={(n) => download(contentUrl(n.id))}
+        />
       )}
     </Stack>
   );

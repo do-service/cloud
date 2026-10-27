@@ -123,4 +123,37 @@ describe("SharedPage", () => {
     expect(screen.getByText("Просмотр")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "отчёт.pdf" })).toBeInTheDocument();
   });
+
+  it("opens a shared file like the file manager: editor, viewer, download", async () => {
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+    const clicked: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(new URL(this.href).pathname);
+    });
+    const owner = { type: "user", id: "u3", name: "Иван" };
+    mockBackend({
+      "GET /api/v1/auth/me": me,
+      "GET /api/v1/editor": () => Response.json({ extensions: { docx: "edit" } }),
+      "GET /api/v1/shared-with-me": () =>
+        Response.json({
+          items: [
+            { ...node("w", "план.docx", "file", ["read", "write"]), owner, sharedAt: mtime },
+            { ...node("p", "отчёт.pdf", "file", ["read"]), owner, sharedAt: mtime },
+            { ...node("z", "архив.zip", "file", ["read"]), owner, sharedAt: mtime },
+          ],
+        }),
+    });
+    renderApp("/shared");
+
+    await userEvent.click(await screen.findByRole("button", { name: "план.docx" }));
+    await waitFor(() => expect(opened).toHaveBeenCalledWith("/edit/w", "_blank", "noopener"));
+
+    await userEvent.click(screen.getByRole("button", { name: "отчёт.pdf" }));
+    const viewer = await screen.findByRole("dialog", { name: "отчёт.pdf" });
+    await userEvent.click(within(viewer).getByRole("button", { name: "Закрыть" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "архив.zip" }));
+    expect(clicked).toEqual(["/api/v1/nodes/z/content"]);
+  });
 });
