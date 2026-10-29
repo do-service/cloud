@@ -295,8 +295,10 @@ func TestEngineQuotaAndLocked(t *testing.T) {
 	t.Run("locked", func(t *testing.T) {
 		g := newGated()
 		g.uploadErr.Store(&api.APIError{Status: http.StatusLocked, Code: api.CodeLocked})
+		// LockRetryFor leaves room for the first sync: on a slow runner
+		// (Windows CI) its retries alone took over 200 ms.
 		h := newHarness(t, g, "u1", func(c *Config) {
-			c.LockBackoff, c.LockRetryFor = 20*time.Millisecond, 200*time.Millisecond
+			c.LockBackoff, c.LockRetryFor = 20*time.Millisecond, 2*time.Second
 		})
 		t.Cleanup(h.close)
 		h.selectAll()
@@ -305,7 +307,7 @@ func TestEngineQuotaAndLocked(t *testing.T) {
 		if pendingOps(t, &client{harness: h}) != 1 || len(h.problems()) != 0 {
 			t.Fatalf("after a 423: %d ops, problems %+v", pendingOps(t, &client{harness: h}), h.problems())
 		}
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(10 * time.Second)
 		for !hasKind(h.problems(), ProblemLocked) {
 			if time.Now().After(deadline) {
 				t.Fatalf("no lock problem after LockRetryFor; %d attempts", g.uploads.Load())
