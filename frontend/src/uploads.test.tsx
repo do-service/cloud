@@ -64,7 +64,7 @@ function response(status: number, body: string): HttpResponse {
   return { getStatus: () => status, getHeader: () => undefined, getBody: () => body, getUnderlyingObject: () => null };
 }
 
-const sizes = { offsetHeight: 600, offsetWidth: 800 };
+const sizes = { offsetHeight: 600, offsetWidth: 800, clientHeight: 600 };
 const saved = Object.fromEntries(Object.keys(sizes).map((k) => [k, Object.getOwnPropertyDescriptor(HTMLElement.prototype, k)]));
 beforeAll(() => {
   for (const [k, v] of Object.entries(sizes)) Object.defineProperty(HTMLElement.prototype, k, { configurable: true, value: v });

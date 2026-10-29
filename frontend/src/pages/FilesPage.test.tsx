@@ -6,8 +6,9 @@ import { currentUrl, mockBackend, renderApp, selectionAction, stubMedia, unautho
 
 // jsdom lays nothing out, so every element measures 0×0 and the
 // virtualizer would render no rows. Give elements a screen-sized box (the
-// grid counts its columns by clientWidth).
-const sizes = { offsetHeight: 600, offsetWidth: 800, clientWidth: 800 };
+// virtualizer measures its viewport by the client box, rows by the offset
+// one; the grid counts its columns by clientWidth).
+const sizes = { offsetHeight: 600, offsetWidth: 800, clientHeight: 600, clientWidth: 800 };
 const saved = Object.fromEntries(Object.keys(sizes).map((k) => [k, Object.getOwnPropertyDescriptor(HTMLElement.prototype, k)]));
 beforeAll(() => {
   for (const [k, v] of Object.entries(sizes)) Object.defineProperty(HTMLElement.prototype, k, { configurable: true, value: v });

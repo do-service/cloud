@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockBackend, renderApp, openSelectionActions, selectionAction } from "../testing";
 
-const sizes = { offsetHeight: 600, offsetWidth: 800 };
+const sizes = { offsetHeight: 600, offsetWidth: 800, clientHeight: 600 };
 const saved = Object.fromEntries(Object.keys(sizes).map((k) => [k, Object.getOwnPropertyDescriptor(HTMLElement.prototype, k)]));
 beforeAll(() => {
   for (const [k, v] of Object.entries(sizes)) Object.defineProperty(HTMLElement.prototype, k, { configurable: true, value: v });
