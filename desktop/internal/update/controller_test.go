@@ -106,6 +106,18 @@ func eventually(t *testing.T, what string, ok func() bool) {
 	}
 }
 
+// checked waits for the n-th check to be over: the engine counts it
+// before the controller schedules the next one from the clock, and a
+// clock moved in between would push that one out of reach.
+func checked(t *testing.T, what string, c *Controller, clk *clock, eng *fakeEngine, n int) {
+	t.Helper()
+	eventually(t, what, func() bool {
+		got, _, _ := eng.counts()
+		last := c.Status().LastCheck
+		return got == n && last != nil && last.Equal(clk.Now())
+	})
+}
+
 // settle lets Run go round its loop many times.
 func settle() { time.Sleep(60 * time.Millisecond) }
 
@@ -150,7 +162,7 @@ func TestScheduleEveryInterval(t *testing.T) {
 	eng := &fakeEngine{}
 	c, clk := newTestController(t, eng, ModeNotify, InstallSelf, true)
 	run(t, c)
-	eventually(t, "the check on start", func() bool { n, _, _ := eng.counts(); return n == 1 })
+	checked(t, "the check on start", c, clk, eng, 1)
 	if st := c.Status(); st.State != StateUpToDate || st.Release != nil {
 		t.Fatalf("up to date: %+v", st)
 	}
@@ -160,19 +172,19 @@ func TestScheduleEveryInterval(t *testing.T) {
 		t.Fatalf("checked before the interval: %d", n)
 	}
 	clk.add(time.Minute)
-	eventually(t, "the check after the interval", func() bool { n, _, _ := eng.counts(); return n == 2 })
+	checked(t, "the check after the interval", c, clk, eng, 2)
 
 	// A failed check is tried again sooner.
 	eng.mu.Lock()
 	eng.checkErr = errors.New("offline")
 	eng.mu.Unlock()
 	clk.add(DefaultInterval)
-	eventually(t, "the failing check", func() bool { n, _, _ := eng.counts(); return n == 3 })
+	checked(t, "the failing check", c, clk, eng, 3)
 	if st := c.Status(); st.State != StateError || st.ErrorStage != StageCheck {
 		t.Fatalf("after a failed check: %+v", st)
 	}
 	clk.add(retryAfterError)
-	eventually(t, "the retry", func() bool { n, _, _ := eng.counts(); return n == 4 })
+	checked(t, "the retry", c, clk, eng, 4)
 
 	// Turned off: no more checks however long.
 	if err := c.SetMode(ModeOff); err != nil {
