@@ -8,11 +8,11 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
-    "@mantine/core": "^9.5.0",
+    "@mantine/core": "^9.7.4",
     "@mantine/hooks": "^9.5.0",
     "@tabler/icons-react": "^3.45.0",
-    "@tanstack/react-query": "^5.101.4",
-    "@tanstack/react-virtual": "^3.14.13",
+    "@tanstack/react-query": "^5.105.0",
+    "@tanstack/react-virtual": "^3.14.23",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
