@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -ldflags "-s -w -X github.com/do-service/cloud/backend/internal/version.Version=${VERSION}" \
     -o /out/server ./cmd/server
 
-FROM alpine:3.22
+FROM alpine:3.24
 # vips makes previews (R6): HEIC through libheif, PDF through poppler,
 # which needs fonts to draw text. Without it previews are just off.
 RUN apk add --no-cache vips-tools vips-heif vips-poppler font-dejavu
