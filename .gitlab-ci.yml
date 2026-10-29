@@ -31,7 +31,7 @@ variables:
       - .cache/go-mod
 
 .node:
-  image: node:24-alpine
+  image: node:26-alpine
   cache:
     key: frontend-npm-$CI_COMMIT_REF_SLUG
     paths:

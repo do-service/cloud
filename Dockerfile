@@ -6,7 +6,7 @@
 # cross-compiles to the target: a multi-arch build (release workflow) then
 # doesn't compile under QEMU, which is many times slower. The bundle is
 # plain JS, the same for every target.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:26-alpine AS frontend
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci

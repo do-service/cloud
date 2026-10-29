@@ -10,7 +10,7 @@ requests in English or Russian are both fine.
 ## Development setup
 
 You need Docker with Compose v2.24+, Go (the version in `backend/go.mod`) and
-Node.js 24.
+Node.js 26.
 
 ```sh
 docker compose up -d postgres          # PostgreSQL on 127.0.0.1:55433 (databases cloud and cloud_test)

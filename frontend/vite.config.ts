@@ -39,5 +39,8 @@ export default defineConfig({
     setupFiles: ["./src/setupTests.ts"],
     globals: false,
     css: true,
+    // Node 25+ has its own localStorage, unusable without --localstorage-file,
+    // and it shadows jsdom's.
+    execArgv: ["--no-experimental-webstorage"],
   },
 });
